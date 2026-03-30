@@ -2,6 +2,7 @@
 #include <QMediaDevices>
 #include <QAudioDevice>
 #include <QDebug>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -86,6 +87,7 @@ bool AudioEngine::setupOutputSink()
 
     m_audioSink = newSink;
     m_speakerDevice = newSpeaker;
+    m_audioSink->setVolume(std::clamp(m_playbackVolume, 0, 100) / 100.0);
     emit logMessage(QString("AudioEngine: Output device: %1").arg(outputDevice.description()));
     return true;
 }
@@ -217,6 +219,13 @@ void AudioEngine::resetPlayback()
 {
     m_playbackBuffer.clear();
     m_bufferPrimed = false;
+}
+
+void AudioEngine::setPlaybackVolume(int percent)
+{
+    m_playbackVolume = std::clamp(percent, 0, 100);
+    if (m_audioSink)
+        m_audioSink->setVolume(m_playbackVolume / 100.0);
 }
 
 void AudioEngine::drainPlaybackBuffer()

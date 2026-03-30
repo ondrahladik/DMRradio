@@ -32,6 +32,8 @@ public:
 
     void playPCM(const QByteArray &pcm);
     void resetPlayback();
+    void setPlaybackVolume(int percent);
+    int playbackVolume() const { return m_playbackVolume; }
 
     QAudioFormat format() const { return m_format; }
 
@@ -73,6 +75,7 @@ private:
     QByteArray m_playbackBuffer;
     bool m_initialized = false;
     bool m_bufferPrimed = false;
+    int m_playbackVolume = 100;
     static constexpr int JITTER_BUFFER_BYTES = 2880;
 };
 

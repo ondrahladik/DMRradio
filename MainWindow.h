@@ -12,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QSlider>
 #include <QHash>
 #include <QVector>
 
@@ -79,6 +80,8 @@ private:
     QLabel *m_callerCallsignLabel = nullptr;
     QLabel *m_callerNameLabel = nullptr;
     QLabel *m_targetLabel = nullptr;
+    QSlider *m_volumeSlider = nullptr;
+    QLabel *m_volumeValueLabel = nullptr;
 
     // Navigation buttons
     QPushButton *m_navHotspots = nullptr;
