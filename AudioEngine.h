@@ -21,8 +21,10 @@ public:
     explicit AudioEngine(QObject *parent = nullptr);
     ~AudioEngine() override;
 
-    bool initialize(const QString &inputDeviceName = QString());
+    bool initialize(const QString &inputDeviceName = QString(),
+                    const QString &outputDeviceName = QString());
     static QList<QAudioDevice> availableInputDevices();
+    static QList<QAudioDevice> availableOutputDevices();
 
     void startCapture();
     void stopCapture();
@@ -44,11 +46,14 @@ private slots:
 private:
     void setupFormat();
     QAudioDevice findInputDevice() const;
+    QAudioDevice findOutputDevice() const;
+    bool setupOutputSink();
     QByteArray resampleToTarget(const QByteArray &raw);
 
     // Target format: 8 kHz, mono, 16-bit
     QAudioFormat m_format;
     QString m_inputDeviceName;
+    QString m_outputDeviceName;
 
     // Actual capture format (may differ from target on Windows)
     int m_captureRate = 8000;

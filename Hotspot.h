@@ -128,6 +128,8 @@ private:
     AmbeEncoder *m_encoder = nullptr;
     QByteArray m_txPcmBuffer;               // PCM data waiting to be encoded
     int m_txTalkgroup = 0;                  // Dynamic TX TG (0 = use config)
+    QString m_lastSentTag;                  // Last outgoing packet type for diagnostics
+    int m_lastSentSize = 0;                 // Last outgoing packet size for diagnostics
 };
 
 #endif // HOTSPOT_H
