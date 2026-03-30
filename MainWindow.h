@@ -12,6 +12,7 @@
 #include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QSpinBox>
+#include <QHash>
 #include <QVector>
 
 class HotspotManager;
@@ -63,6 +64,7 @@ private:
     void updateRowState(int index);
     void updateMainPttState();
     void loadSettingsToUi();
+    void loadDmrIds();
 
     HotspotManager *m_manager = nullptr;
     AudioEngine *m_audio = nullptr;
@@ -74,6 +76,8 @@ private:
     QPlainTextEdit *m_logView = nullptr;
     QPushButton *m_mainPttBtn = nullptr;
     QLabel *m_callerLabel = nullptr;
+    QLabel *m_callerCallsignLabel = nullptr;
+    QLabel *m_callerNameLabel = nullptr;
     QLabel *m_targetLabel = nullptr;
 
     // Navigation buttons
@@ -89,6 +93,7 @@ private:
     QLineEdit *m_settPassword = nullptr;
     QLineEdit *m_settDmrId = nullptr;
     QComboBox *m_settInputDevice = nullptr;
+    QComboBox *m_settOutputDevice = nullptr;
 
     struct TgRow {
         QLineEdit *name = nullptr;
@@ -100,6 +105,8 @@ private:
     };
     QVector<TgRow> m_settTgRows;
     QButtonGroup *m_mainGroup = nullptr;
+
+    QHash<quint32, QPair<QString, QString>> m_dmrLookup;
 };
 
 #endif // MAINWINDOW_H

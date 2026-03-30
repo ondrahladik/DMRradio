@@ -14,10 +14,55 @@
 #include <QScrollArea>
 #include <QStyle>
 #include <QIntValidator>
+#include <QCoreApplication>
+#include <QFile>
 #include <QMessageBox>
+#include <QRegularExpression>
+#include <QTextStream>
 #include <QTime>
 #include <QDebug>
 #include <QAudioDevice>
+
+namespace {
+
+QHash<quint32, QPair<QString, QString>> loadDmrLookup(const QString &filePath)
+{
+    QHash<quint32, QPair<QString, QString>> lookup;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return lookup;
+
+    QTextStream in(&file);
+    while (!in.atEnd()) {
+        const QString line = in.readLine().trimmed();
+        if (line.isEmpty())
+            continue;
+
+        QStringList parts = line.split('\t', Qt::KeepEmptyParts);
+        if (parts.size() < 3)
+            parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+
+        if (parts.size() < 3)
+            continue;
+
+        bool ok = false;
+        const quint32 dmrId = parts.value(0).toUInt(&ok);
+        if (!ok)
+            continue;
+
+        const QString callsign = parts.value(1).trimmed();
+        const QString name = parts.mid(2).join(" ").trimmed();
+        if (callsign.isEmpty() || name.isEmpty())
+            continue;
+
+        lookup.insert(dmrId, qMakePair(callsign, name));
+    }
+
+    return lookup;
+}
+
+} // namespace
 
 // ──────────────────────────────────────────────
 //  Constructor / Destructor
@@ -36,6 +81,7 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     setFixedHeight(480);
     resize(340, 480);
     buildUi();
+    loadDmrIds();
 
     // Wire manager signals
     connect(m_manager, &HotspotManager::logMessage, this, &MainWindow::addLog);
@@ -201,27 +247,35 @@ QWidget *MainWindow::createHotspotsPage()
     panelLayout->setHorizontalSpacing(8);
     panelLayout->setVerticalSpacing(4);
 
-    auto *dmrTitle = new QLabel("DMR ID:");
-    dmrTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
-    panelLayout->addWidget(dmrTitle, 0, 0);
+    auto addInfoRow = [panelLayout](int row, const QString &titleText, QLabel *&valueLabel,
+                                    const QString &valueColor, int fontSize) {
+        auto *title = new QLabel(titleText);
+        title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
+        panelLayout->addWidget(title, row, 0);
 
-    m_callerLabel = new QLabel("");
-    m_callerLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    m_callerLabel->setStyleSheet(
-        "QLabel { color: #4fc3f7; font-size: 12pt; font-weight: bold; }");
-    m_callerLabel->setMinimumHeight(22);
-    panelLayout->addWidget(m_callerLabel, 0, 1);
+        valueLabel = new QLabel("");
+        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; }")
+                                      .arg(valueColor)
+                                      .arg(fontSize));
+        valueLabel->setMinimumHeight(22);
+        panelLayout->addWidget(valueLabel, row, 1);
+    };
+
+    addInfoRow(0, "Callsign:", m_callerCallsignLabel, "#3fc3f7", 11);
+    addInfoRow(1, "Name:", m_callerNameLabel, "#3fc3f7", 10);
+    addInfoRow(2, "DMR ID:", m_callerLabel, "#3fc3f7", 12);
 
     auto *targetTitle = new QLabel("Target:");
     targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
-    panelLayout->addWidget(targetTitle, 1, 0);
+    panelLayout->addWidget(targetTitle, 3, 0);
 
     m_targetLabel = new QLabel("");
     m_targetLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_targetLabel->setStyleSheet(
-        "QLabel { color: #ffd54f; font-size: 10pt; font-weight: bold; }");
+        "QLabel { color: #3fc3f7; font-size: 10pt; font-weight: bold; }");
     m_targetLabel->setMinimumHeight(22);
-    panelLayout->addWidget(m_targetLabel, 1, 1);
+    panelLayout->addWidget(m_targetLabel, 3, 1);
 
     panelLayout->setColumnStretch(0, 0);
     panelLayout->setColumnStretch(1, 1);
@@ -251,30 +305,45 @@ QWidget *MainWindow::createAboutPage()
 {
     auto *page = new QWidget();
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(8, 8, 8, 8);
-    layout->setSpacing(8);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(10);
 
     auto *title = new QLabel("DMR radio");
     QFont titleFont = title->font();
-    titleFont.setPointSize(16);
+    titleFont.setPointSize(18);
     titleFont.setBold(true);
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
+    title->setStyleSheet("QLabel { color: #4fc3f7; }");
     layout->addWidget(title);
 
-    auto *version = new QLabel("Version: 1.0.1");
+    const QString versionText = QCoreApplication::applicationVersion().isEmpty()
+        ? QStringLiteral("1.0.2")
+        : QCoreApplication::applicationVersion();
+    auto *version = new QLabel(QString("Version: %1").arg(versionText));
     version->setAlignment(Qt::AlignCenter);
+    version->setStyleSheet("QLabel { color: #bdbdbd; }");
     layout->addWidget(version);
 
-    auto *copyright = new QLabel("Copyright: OK1KKY");
+    auto *copyright = new QLabel(QString::fromUtf8("© 2026 OK1KKY"));
     copyright->setAlignment(Qt::AlignCenter);
+    copyright->setStyleSheet("QLabel { color: #cfcfcf; }");
     layout->addWidget(copyright);
+
+    auto *projectPage = new QLabel("<a href=\"https://github.com/ondrahladik/DMRradio\">github.com/ondrahladik/DMRradio</a>");
+    projectPage->setAlignment(Qt::AlignCenter);
+    projectPage->setTextFormat(Qt::RichText);
+    projectPage->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    projectPage->setOpenExternalLinks(true);
+    projectPage->setStyleSheet("QLabel { color: #4fc3f7; }");
+    layout->addWidget(projectPage);
 
     auto *web = new QLabel("<a href=\"https://www.ok1kky.cz\">www.ok1kky.cz</a>");
     web->setAlignment(Qt::AlignCenter);
     web->setTextFormat(Qt::RichText);
     web->setTextInteractionFlags(Qt::TextBrowserInteraction);
     web->setOpenExternalLinks(true);
+    web->setStyleSheet("QLabel { color: #4fc3f7; }");
     layout->addWidget(web);
 
     layout->addStretch();
@@ -362,8 +431,9 @@ QWidget *MainWindow::createSettingsPage()
     // ── Audio group ──
     auto *audioGroup = new QGroupBox("Audio", scrollContent);
     audioGroup->setStyleSheet(sectionStyle);
-    auto *audioForm = new QFormLayout(audioGroup);
-    audioForm->setSpacing(6);
+    auto *audioGrid = new QGridLayout(audioGroup);
+    audioGrid->setHorizontalSpacing(6);
+    audioGrid->setVerticalSpacing(6);
 
     m_settInputDevice = new QComboBox();
     m_settInputDevice->setMinimumHeight(minH);
@@ -372,7 +442,25 @@ QWidget *MainWindow::createSettingsPage()
     for (const QAudioDevice &dev : AudioEngine::availableInputDevices())
         m_settInputDevice->addItem(dev.description());
 
-    audioForm->addRow("Input Device:", m_settInputDevice);
+    m_settOutputDevice = new QComboBox();
+    m_settOutputDevice->setMinimumHeight(minH);
+    m_settOutputDevice->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_settOutputDevice->addItem("(Default)");
+    for (const QAudioDevice &dev : AudioEngine::availableOutputDevices())
+        m_settOutputDevice->addItem(dev.description());
+
+    auto *inputLabel = new QLabel("Input:");
+    inputLabel->setMinimumHeight(minH);
+    inputLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    audioGrid->addWidget(inputLabel, 0, 0);
+    audioGrid->addWidget(m_settInputDevice, 0, 1);
+
+    auto *outputLabel = new QLabel("Output:");
+    outputLabel->setMinimumHeight(minH);
+    outputLabel->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    audioGrid->addWidget(outputLabel, 1, 0);
+    audioGrid->addWidget(m_settOutputDevice, 1, 1);
+    audioGrid->setColumnStretch(1, 1);
     layout->addWidget(audioGroup);
 
     // ── Hotspots group ──
@@ -461,6 +549,7 @@ QWidget *MainWindow::createSettingsPage()
     auto *btnLayout = new QHBoxLayout();
     btnLayout->addStretch();
     btnLayout->addWidget(saveBtn);
+    btnLayout->addStretch();
     layout->addLayout(btnLayout);
 
     layout->addStretch();
@@ -628,12 +717,28 @@ void MainWindow::onVoiceCallStarted(int /*index*/, quint32 srcId)
 {
     if (m_callerLabel)
         m_callerLabel->setText(QString::number(srcId));
+    if (m_callerCallsignLabel)
+        m_callerCallsignLabel->setText("-");
+    if (m_callerNameLabel)
+        m_callerNameLabel->setText("-");
+
+    const auto it = m_dmrLookup.constFind(srcId);
+    if (it != m_dmrLookup.constEnd()) {
+        if (m_callerCallsignLabel)
+            m_callerCallsignLabel->setText(it.value().first);
+        if (m_callerNameLabel)
+            m_callerNameLabel->setText(it.value().second);
+    }
 }
 
 void MainWindow::onVoiceCallEnded(int /*index*/)
 {
     if (m_callerLabel)
         m_callerLabel->setText("");
+    if (m_callerCallsignLabel)
+        m_callerCallsignLabel->setText("");
+    if (m_callerNameLabel)
+        m_callerNameLabel->setText("");
     if (m_targetLabel)
         m_targetLabel->setText("");
 }
@@ -723,6 +828,14 @@ void MainWindow::loadSettingsToUi()
         m_settInputDevice->setCurrentIndex(idx >= 0 ? idx : 0);
     }
 
+    QString savedOutDev = m_configMgr->outputDevice();
+    if (savedOutDev.isEmpty()) {
+        m_settOutputDevice->setCurrentIndex(0);
+    } else {
+        int idx = m_settOutputDevice->findText(savedOutDev);
+        m_settOutputDevice->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+
     for (int i = 0; i < m_settTgRows.size() && i < m_configMgr->hotspotCount(); ++i) {
         m_settTgRows[i].name->setText(m_configMgr->hotspotName(i));
         m_settTgRows[i].suffix->setValue(m_configMgr->hotspotSuffix(i));
@@ -731,6 +844,12 @@ void MainWindow::loadSettingsToUi()
         m_settTgRows[i].isMain->setChecked(m_configMgr->hotspotIsMain(i));
         m_settTgRows[i].rxEnabled->setChecked(m_configMgr->hotspotRxEnabled(i));
     }
+}
+
+void MainWindow::loadDmrIds()
+{
+    const QString dmrIdsPath = QCoreApplication::applicationDirPath() + "/DMRIds.dat";
+    m_dmrLookup = loadDmrLookup(dmrIdsPath);
 }
 
 void MainWindow::saveSettings()
@@ -750,6 +869,9 @@ void MainWindow::saveSettings()
     QString devText = m_settInputDevice->currentText();
     m_configMgr->setInputDevice(devText == "(Default)" ? QString() : devText);
 
+    QString outDevText = m_settOutputDevice->currentText();
+    m_configMgr->setOutputDevice(outDevText == "(Default)" ? QString() : outDevText);
+
     for (int i = 0; i < m_settTgRows.size() && i < m_configMgr->hotspotCount(); ++i) {
         m_configMgr->setHotspotName(i, m_settTgRows[i].name->text());
         m_configMgr->setHotspotSuffix(i, m_settTgRows[i].suffix->value());
@@ -766,10 +888,21 @@ void MainWindow::saveSettings()
             m_configMgr->setHotspotTxTg(cfgIdx, m_rows[i].txTgSpin->value());
     }
 
-    if (m_configMgr->save()) {
+    bool saved = m_configMgr->save();
+    bool audioApplied = false;
+    if (saved && m_audio) {
+        audioApplied = m_audio->initialize(m_configMgr->inputDevice(), m_configMgr->outputDevice());
+    }
+
+    if (saved) {
         addLog("Settings saved to " + m_configMgr->configPath());
-        QMessageBox::information(this, "Settings",
-            "Settings saved successfully.\nChanges take effect after restart.");
+        if (audioApplied) {
+            QMessageBox::information(this, "Settings",
+                "Settings saved successfully.\nAudio input and output were updated.");
+        } else {
+            QMessageBox::information(this, "Settings",
+                "Settings saved successfully.\nAudio settings were saved, but the selected devices could not be applied right now.");
+        }
     } else {
         addLog("Error: Failed to save settings!");
         QMessageBox::warning(this, "Error", "Failed to save settings.");

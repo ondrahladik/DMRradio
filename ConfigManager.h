@@ -24,6 +24,7 @@ public:
     QString callsign() const;
     quint32 dmrId() const;
     QString inputDevice() const;
+    QString outputDevice() const;
 
     void setHost(const QString &v);
     void setPort(quint16 v);
@@ -31,6 +32,7 @@ public:
     void setCallsign(const QString &v);
     void setDmrId(quint32 v);
     void setInputDevice(const QString &v);
+    void setOutputDevice(const QString &v);
 
     // Hotspot access
     int hotspotCount() const;

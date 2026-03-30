@@ -84,6 +84,8 @@ void Hotspot::connectToServer()
     if (m_state != State::Disconnected)
         return;
 
+    m_socket->blockSignals(false);
+
     // Resolve host
     QHostInfo info = QHostInfo::fromName(m_config.host);
     if (info.addresses().isEmpty()) {
@@ -123,6 +125,7 @@ void Hotspot::disconnectFromServer()
     // Send RPTCL disconnect packet
     sendPacket(buildDisconnectPacket());
 
+    m_socket->blockSignals(true);
     m_socket->close();
     setState(State::Disconnected);
 
@@ -255,6 +258,9 @@ void Hotspot::onKeepalive()
 
 void Hotspot::onReadyRead()
 {
+    if (m_socket->state() != QAbstractSocket::BoundState)
+        return;
+
     while (m_socket->hasPendingDatagrams()) {
         QByteArray datagram;
         datagram.resize(m_socket->pendingDatagramSize());
@@ -319,13 +325,17 @@ void Hotspot::processDatagram(const QByteArray &data)
 
     // ── MSTNAK: Server rejection ──
     if (data.startsWith("MSTNAK")) {
-        emit logMessage(QString("[%1] ✗ SERVER NAK — rejected in state %2")
+        emit logMessage(QString("[%1] ✗ SERVER NAK — rejected in state %2 after %3 (%4 bytes)")
                             .arg(m_config.name)
-                            .arg(static_cast<int>(m_state)));
+                            .arg(static_cast<int>(m_state))
+                            .arg(m_lastSentTag.isEmpty() ? QStringLiteral("unknown") : m_lastSentTag)
+                            .arg(m_lastSentSize));
         stopTransmit();
         m_keepaliveTimer->stop();
+        m_socket->blockSignals(true);
         m_socket->close();
         setState(State::Disconnected);
+        QTimer::singleShot(1000, this, &Hotspot::connectToServer);
         return;
     }
 
@@ -335,8 +345,10 @@ void Hotspot::processDatagram(const QByteArray &data)
                             .arg(m_config.name));
         stopTransmit();
         m_keepaliveTimer->stop();
+        m_socket->blockSignals(true);
         m_socket->close();
         setState(State::Disconnected);
+        QTimer::singleShot(1000, this, &Hotspot::connectToServer);
         return;
     }
 
@@ -548,5 +560,28 @@ void Hotspot::setState(State s)
 
 void Hotspot::sendPacket(const QByteArray &data)
 {
+    if (m_socket->state() != QAbstractSocket::BoundState) {
+        emit logMessage(QString("[%1] ! SEND skipped — UDP socket not bound (%2)")
+                            .arg(m_config.name, m_socket->errorString()));
+        return;
+    }
+
+    if (data.startsWith("RPTPING"))
+        m_lastSentTag = "RPTPING";
+    else if (data.startsWith("RPTCL"))
+        m_lastSentTag = "RPTCL";
+    else if (data.startsWith("RPTL"))
+        m_lastSentTag = "RPTL";
+    else if (data.startsWith("RPTK"))
+        m_lastSentTag = "RPTK";
+    else if (data.startsWith("RPTC"))
+        m_lastSentTag = "RPTC";
+    else if (data.startsWith("RPTO"))
+        m_lastSentTag = "RPTO";
+    else if (data.startsWith("DMRD"))
+        m_lastSentTag = "DMRD";
+    else
+        m_lastSentTag = "unknown";
+    m_lastSentSize = data.size();
     m_socket->writeDatagram(data, m_serverAddress, m_config.port);
 }

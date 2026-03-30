@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("DMR radio");
-    app.setApplicationVersion("1.0.1");
+    app.setApplicationVersion("1.0.2");
     app.setStyleSheet(APP_DARK_STYLE);
 
     // Locate config.json next to the executable
@@ -110,7 +110,7 @@ int main(int argc, char *argv[])
     }
 
     AudioEngine audio;
-    if (!audio.initialize(config.inputDevice())) {
+    if (!audio.initialize(config.inputDevice(), config.outputDevice())) {
         qWarning() << "Audio engine initialization failed.";
     }
 

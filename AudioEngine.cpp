@@ -34,6 +34,11 @@ QList<QAudioDevice> AudioEngine::availableInputDevices()
     return QMediaDevices::audioInputs();
 }
 
+QList<QAudioDevice> AudioEngine::availableOutputDevices()
+{
+    return QMediaDevices::audioOutputs();
+}
+
 QAudioDevice AudioEngine::findInputDevice() const
 {
     if (!m_inputDeviceName.isEmpty()) {
@@ -46,12 +51,63 @@ QAudioDevice AudioEngine::findInputDevice() const
     return QMediaDevices::defaultAudioInput();
 }
 
-bool AudioEngine::initialize(const QString &inputDeviceName)
+QAudioDevice AudioEngine::findOutputDevice() const
 {
-    if (m_initialized)
+    if (!m_outputDeviceName.isEmpty()) {
+        for (const QAudioDevice &dev : QMediaDevices::audioOutputs()) {
+            if (dev.description() == m_outputDeviceName)
+                return dev;
+        }
+        qWarning() << "AudioEngine: Requested output device not found:" << m_outputDeviceName;
+    }
+    return QMediaDevices::defaultAudioOutput();
+}
+
+bool AudioEngine::setupOutputSink()
+{
+    QAudioDevice outputDevice = findOutputDevice();
+    if (outputDevice.isNull()) {
+        emit logMessage("AudioEngine: No audio output device found");
+        return false;
+    }
+
+    QAudioSink *newSink = new QAudioSink(outputDevice, m_format, this);
+    QIODevice *newSpeaker = newSink->start();
+    if (!newSpeaker) {
+        emit logMessage("AudioEngine: Failed to open speaker device");
+        delete newSink;
+        return false;
+    }
+
+    if (m_audioSink) {
+        m_audioSink->stop();
+        delete m_audioSink;
+    }
+
+    m_audioSink = newSink;
+    m_speakerDevice = newSpeaker;
+    emit logMessage(QString("AudioEngine: Output device: %1").arg(outputDevice.description()));
+    return true;
+}
+
+bool AudioEngine::initialize(const QString &inputDeviceName, const QString &outputDeviceName)
+{
+    if (m_initialized) {
+        bool outputChanged = (outputDeviceName != m_outputDeviceName);
+        m_inputDeviceName = inputDeviceName;
+        m_outputDeviceName = outputDeviceName;
+
+        if (outputChanged) {
+            resetPlayback();
+            if (!setupOutputSink())
+                return false;
+        }
+
         return true;
+    }
 
     m_inputDeviceName = inputDeviceName;
+    m_outputDeviceName = outputDeviceName;
 
     QAudioDevice inputDevice = findInputDevice();
     if (inputDevice.isNull())
@@ -59,18 +115,8 @@ bool AudioEngine::initialize(const QString &inputDeviceName)
     else
         emit logMessage(QString("AudioEngine: Input device: %1").arg(inputDevice.description()));
 
-    QAudioDevice outputDevice = QMediaDevices::defaultAudioOutput();
-    if (outputDevice.isNull()) {
-        emit logMessage("AudioEngine: No audio output device found");
+    if (!setupOutputSink())
         return false;
-    }
-
-    m_audioSink = new QAudioSink(outputDevice, m_format, this);
-    m_speakerDevice = m_audioSink->start();
-    if (!m_speakerDevice) {
-        emit logMessage("AudioEngine: Failed to open speaker device");
-        return false;
-    }
 
     m_drainTimer = new QTimer(this);
     m_drainTimer->setInterval(DRAIN_INTERVAL_MS);
