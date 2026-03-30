@@ -34,6 +34,10 @@ qt_add_executable(DMRradio
     resources.qrc
 )
 
+if(WIN32)
+    target_sources(DMRradio PRIVATE app_icon.rc)
+endif()
+
 target_include_directories(DMRradio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mbelib
