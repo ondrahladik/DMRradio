@@ -22,6 +22,7 @@
 #include <QTime>
 #include <QDebug>
 #include <QAudioDevice>
+#include <QSlider>
 
 namespace {
 
@@ -281,6 +282,77 @@ QWidget *MainWindow::createHotspotsPage()
     panelLayout->setColumnStretch(1, 1);
 
     layout->addWidget(panel);
+
+    // Full-width playback volume control
+    auto *volumeFrame = new QFrame();
+    volumeFrame->setFrameShape(QFrame::StyledPanel);
+    volumeFrame->setStyleSheet(
+        "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+
+    auto *volumeLayout = new QHBoxLayout(volumeFrame);
+    volumeLayout->setContentsMargins(10, 8, 10, 8);
+    volumeLayout->setSpacing(8);
+
+    auto *volumeLabel = new QLabel("Volume");
+    volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
+    volumeLabel->setMinimumWidth(44);
+
+    m_volumeSlider = new QSlider(Qt::Horizontal);
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setSingleStep(1);
+    m_volumeSlider->setPageStep(10);
+    m_volumeSlider->setTickInterval(10);
+    m_volumeSlider->setTickPosition(QSlider::NoTicks);
+    m_volumeSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_volumeSlider->setMinimumHeight(24);
+    m_volumeSlider->setStyleSheet(
+        "QSlider::groove:horizontal {"
+        "  height: 6px;"
+        "  background: #2b2b2b;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-radius: 3px;"
+        "}"
+        "QSlider::sub-page:horizontal {"
+        "  background: #569cd6;"
+        "  border: 1px solid #569cd6;"
+        "  border-radius: 3px;"
+        "}"
+        "QSlider::add-page:horizontal {"
+        "  background: #2b2b2b;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-radius: 3px;"
+        "}"
+        "QSlider::handle:horizontal {"
+        "  background: #d4d4d4;"
+        "  border: 1px solid #5a5a5a;"
+        "  width: 16px;"
+        "  margin: -6px 0;"
+        "  border-radius: 8px;"
+        "}"
+        "QSlider::handle:horizontal:hover {"
+        "  background: #ffffff;"
+        "  border-color: #569cd6;"
+        "}");
+
+    m_volumeValueLabel = new QLabel("100%");
+    m_volumeValueLabel->setMinimumWidth(40);
+    m_volumeValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; }");
+
+    connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
+        if (m_volumeValueLabel)
+            m_volumeValueLabel->setText(QString::number(value) + "%");
+        if (m_audio)
+            m_audio->setPlaybackVolume(value);
+    });
+
+    m_volumeSlider->setValue(m_audio ? m_audio->playbackVolume() : 100);
+
+    volumeLayout->addWidget(volumeLabel);
+    volumeLayout->addWidget(m_volumeSlider, 1);
+    volumeLayout->addWidget(m_volumeValueLabel);
+
+    layout->addWidget(volumeFrame);
 
     // Main PTT button at the bottom
     m_mainPttBtn = new QPushButton("PTT");
@@ -628,13 +700,13 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 
     // 🔴 PTT BUTTON
     row.pttBtn = new QPushButton("PTT");
-    row.pttBtn->setFixedWidth(50);
+    row.pttBtn->setMinimumWidth(58);
     row.pttBtn->setFixedHeight(28);
     row.pttBtn->setEnabled(false);
 
     row.pttBtn->setStyleSheet(
         "QPushButton { background-color: #2d2d2d; color: #d4d4d4; font-weight: bold; "
-        "border: 1px solid #3d3d3d; border-radius: 4px; }"
+        "padding: 0 8px; border: 1px solid #3d3d3d; border-radius: 4px; }"
         "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
         "QPushButton:pressed { background-color: #b71c1c; border-color: #ef5350; color: #fff; }"
         "QPushButton:disabled { color: #555555; background-color: #252525; border-color: #303030; }"
