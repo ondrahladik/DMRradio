@@ -241,7 +241,7 @@ QWidget *MainWindow::createHotspotsPage()
     auto *panel = new QFrame();
     panel->setFrameShape(QFrame::StyledPanel);
     panel->setStyleSheet(
-        "QFrame { background-color: #1b1b1b; border: none; }");
+        "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
 
     auto *panelLayout = new QGridLayout(panel);
     panelLayout->setContentsMargins(8, 6, 8, 6);
@@ -251,12 +251,12 @@ QWidget *MainWindow::createHotspotsPage()
     auto addInfoRow = [panelLayout](int row, const QString &titleText, QLabel *&valueLabel,
                                     const QString &valueColor, int fontSize) {
         auto *title = new QLabel(titleText);
-        title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
+        title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
         panelLayout->addWidget(title, row, 0);
 
         valueLabel = new QLabel("");
         valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; }")
+        valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; border: none; background: transparent; }")
                                       .arg(valueColor)
                                       .arg(fontSize));
         valueLabel->setMinimumHeight(22);
@@ -268,13 +268,13 @@ QWidget *MainWindow::createHotspotsPage()
     addInfoRow(2, "DMR ID:", m_callerLabel, "#3fc3f7", 12);
 
     auto *targetTitle = new QLabel("Target:");
-    targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
+    targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
     panelLayout->addWidget(targetTitle, 3, 0);
 
     m_targetLabel = new QLabel("");
     m_targetLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_targetLabel->setStyleSheet(
-        "QLabel { color: #3fc3f7; font-size: 10pt; font-weight: bold; }");
+        "QLabel { color: #3fc3f7; font-size: 10pt; font-weight: bold; border: none; background: transparent; }");
     m_targetLabel->setMinimumHeight(22);
     panelLayout->addWidget(m_targetLabel, 3, 1);
 
@@ -294,7 +294,7 @@ QWidget *MainWindow::createHotspotsPage()
     volumeLayout->setSpacing(8);
 
     auto *volumeLabel = new QLabel("Volume");
-    volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; }");
+    volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
     volumeLabel->setMinimumWidth(44);
 
     m_volumeSlider = new QSlider(Qt::Horizontal);
@@ -337,7 +337,7 @@ QWidget *MainWindow::createHotspotsPage()
     m_volumeValueLabel = new QLabel("100%");
     m_volumeValueLabel->setMinimumWidth(40);
     m_volumeValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; }");
+    m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; border: none; background: transparent; }");
 
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_volumeValueLabel)
@@ -380,43 +380,63 @@ QWidget *MainWindow::createAboutPage()
     layout->setContentsMargins(10, 10, 10, 10);
     layout->setSpacing(10);
 
+    auto *aboutCard = new QFrame();
+    aboutCard->setFrameShape(QFrame::StyledPanel);
+    aboutCard->setStyleSheet(
+        "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+
+    auto *aboutLayout = new QGridLayout(aboutCard);
+    aboutLayout->setContentsMargins(10, 10, 10, 10);
+    aboutLayout->setHorizontalSpacing(12);
+    aboutLayout->setVerticalSpacing(8);
+
     auto *title = new QLabel("DMR radio");
     QFont titleFont = title->font();
     titleFont.setPointSize(18);
     titleFont.setBold(true);
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
-    title->setStyleSheet("QLabel { color: #4fc3f7; }");
-    layout->addWidget(title);
+    title->setStyleSheet("QLabel { color: #4fc3f7; border: none; background: transparent; }");
+    aboutLayout->addWidget(title, 0, 0, 1, 2);
 
     const QString versionText = QCoreApplication::applicationVersion().isEmpty()
-        ? QStringLiteral("1.0.2")
+        ? QStringLiteral("1.0.3")
         : QCoreApplication::applicationVersion();
-    auto *version = new QLabel(QString("Version: %1").arg(versionText));
-    version->setAlignment(Qt::AlignCenter);
-    version->setStyleSheet("QLabel { color: #bdbdbd; }");
-    layout->addWidget(version);
 
-    auto *copyright = new QLabel(QString::fromUtf8("© 2026 OK1KKY"));
-    copyright->setAlignment(Qt::AlignCenter);
-    copyright->setStyleSheet("QLabel { color: #cfcfcf; }");
-    layout->addWidget(copyright);
+    auto addRow = [aboutLayout](int row, const QString &labelText, QLabel *valueLabel) {
+        auto *label = new QLabel(labelText);
+        label->setStyleSheet("QLabel { color: #9e9e9e; font-weight: bold; border: none; background: transparent; }");
+        aboutLayout->addWidget(label, row, 0);
+
+        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        aboutLayout->addWidget(valueLabel, row, 1);
+    };
+
+    auto *version = new QLabel(QString("v%1").arg(versionText));
+    version->setStyleSheet("QLabel { color: #bdbdbd; border: none; background: transparent; }");
+    addRow(1, "Version", version);
+
+    auto *author = new QLabel(QString::fromUtf8("© 2026 OK1KKY"));
+    author->setStyleSheet("QLabel { color: #cfcfcf; border: none; background: transparent; }");
+    addRow(2, "Author", author);
 
     auto *projectPage = new QLabel("<a href=\"https://github.com/ondrahladik/DMRradio\">github.com/ondrahladik/DMRradio</a>");
-    projectPage->setAlignment(Qt::AlignCenter);
     projectPage->setTextFormat(Qt::RichText);
     projectPage->setTextInteractionFlags(Qt::TextBrowserInteraction);
     projectPage->setOpenExternalLinks(true);
-    projectPage->setStyleSheet("QLabel { color: #4fc3f7; }");
-    layout->addWidget(projectPage);
+    projectPage->setStyleSheet("QLabel { color: #4fc3f7; border: none; background: transparent; }");
+    addRow(3, "Project", projectPage);
 
     auto *web = new QLabel("<a href=\"https://www.ok1kky.cz\">www.ok1kky.cz</a>");
-    web->setAlignment(Qt::AlignCenter);
     web->setTextFormat(Qt::RichText);
     web->setTextInteractionFlags(Qt::TextBrowserInteraction);
     web->setOpenExternalLinks(true);
-    web->setStyleSheet("QLabel { color: #4fc3f7; }");
-    layout->addWidget(web);
+    web->setStyleSheet("QLabel { color: #4fc3f7; border: none; background: transparent; }");
+    addRow(4, "Website", web);
+
+    aboutLayout->setColumnStretch(0, 0);
+    aboutLayout->setColumnStretch(1, 1);
+    layout->addWidget(aboutCard);
 
     layout->addStretch();
     return page;
@@ -686,7 +706,7 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
     row.connectBtn->setIcon(QIcon(":/icons/connect.png"));
     row.connectBtn->setIconSize(QSize(24, 24));
     row.connectBtn->setCursor(Qt::PointingHandCursor);
-    row.connectBtn->setToolTip("Connect / Disconnect");
+    row.connectBtn->setToolTip("Connect");
 
     row.connectBtn->setStyleSheet(
         "QPushButton { background-color: #2d2d2d; border: 1px solid #3d3d3d; border-radius: 4px; }"
@@ -831,12 +851,14 @@ void MainWindow::updateRowState(int index)
         row.dotLabel->setStyleSheet(
             "background-color: #cc3333; border-radius: 7px;");
         row.connectBtn->setIcon(QIcon(":/icons/connect.png"));
+        row.connectBtn->setToolTip("Connect");
         break;
 
     case Hotspot::State::Connected:
         row.dotLabel->setStyleSheet(
             "background-color: #33cc33; border-radius: 7px;");
         row.connectBtn->setIcon(QIcon(":/icons/disconnect.png"));
+        row.connectBtn->setToolTip("Disconnect");
         connected = true;
         break;
 
@@ -844,6 +866,7 @@ void MainWindow::updateRowState(int index)
         row.dotLabel->setStyleSheet(
             "background-color: #cccc33; border-radius: 7px;");
         row.connectBtn->setIcon(QIcon(":/icons/abort.png"));
+        row.connectBtn->setToolTip("Abort");
         break;
     }
 
