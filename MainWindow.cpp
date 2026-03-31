@@ -99,9 +99,25 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
         }
     });
 
-    // RX audio chain + caller display wiring
+    wireHotspotConnections();
+    loadSettingsToUi();
+}
+
+MainWindow::~MainWindow()
+{
+    delete m_decoder;
+}
+
+void MainWindow::wireHotspotConnections()
+{
+    if (!m_manager)
+        return;
+
     for (int i = 0; i < m_manager->count(); ++i) {
         Hotspot *hs = m_manager->hotspot(i);
+        if (!hs)
+            continue;
+
         connect(hs, &Hotspot::audioDataReceived, this, [this](const QByteArray &ambe) {
             QByteArray pcm = m_decoder->decode(ambe);
             if (!pcm.isEmpty())
@@ -119,19 +135,38 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
                 m_targetLabel->setText(QString("TG %1").arg(dstId));
         });
 
-        // Initialize TX TG from config
-        int cfgIdx = hs->configIndex();
-        int txTg = m_configMgr->hotspotTxTg(cfgIdx);
-        if (txTg > 0)
-            hs->setTxTalkgroup(txTg);
+        const int cfgIdx = hs->configIndex();
+        const int txTg = m_configMgr ? m_configMgr->hotspotTxTg(cfgIdx) : 0;
+        hs->setTxTalkgroup(txTg);
+        hs->setRxEnabled(m_configMgr ? m_configMgr->hotspotRxEnabled(cfgIdx) : true);
+        updateRowState(i);
     }
 
-    loadSettingsToUi();
+    updateMainPttState();
 }
 
-MainWindow::~MainWindow()
+void MainWindow::rebuildHotspotsPage()
 {
-    delete m_decoder;
+    if (!m_stack)
+        return;
+
+    QWidget *oldPage = m_stack->widget(0);
+    QWidget *currentPage = m_stack->currentWidget();
+
+    m_rows.clear();
+
+    QWidget *newPage = createHotspotsPage();
+    m_stack->insertWidget(0, newPage);
+    m_stack->removeWidget(oldPage);
+    if (oldPage)
+        oldPage->deleteLater();
+
+    if (currentPage == oldPage)
+        m_stack->setCurrentWidget(newPage);
+    else if (currentPage)
+        m_stack->setCurrentWidget(currentPage);
+
+    updateMainPttState();
 }
 
 // ──────────────────────────────────────────────
@@ -210,6 +245,7 @@ QWidget *MainWindow::createHotspotsPage()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(6);
+    m_rows.clear();
 
     // Hotspot rows: [● Name] [TG:spin] [CONNECT] [PTT]
     for (int i = 0; i < m_manager->count(); ++i) {
@@ -657,12 +693,78 @@ QWidget *MainWindow::createLogPage()
 {
     auto *page = new QWidget();
     auto *layout = new QVBoxLayout(page);
-    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setContentsMargins(8, 8, 8, 8);
+    layout->setSpacing(0);
 
-    m_logView = new QPlainTextEdit(page);
+    auto *logCard = new QFrame();
+    logCard->setFrameShape(QFrame::StyledPanel);
+    logCard->setStyleSheet(
+        "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+
+    auto *logLayout = new QVBoxLayout(logCard);
+    logLayout->setContentsMargins(0, 0, 0, 0);
+
+    m_logView = new QPlainTextEdit(logCard);
     m_logView->setReadOnly(true);
     m_logView->setMaximumBlockCount(5000);
-    layout->addWidget(m_logView);
+    m_logView->setFrameShape(QFrame::NoFrame);
+    m_logView->setStyleSheet(
+        "QPlainTextEdit {"
+        "  background-color: transparent;"
+        "  color: #cccccc;"
+        "  border: none;"
+        "  padding: 8px;"
+        "  selection-background-color: #264f78;"
+        "  selection-color: #ffffff;"
+        "}"
+        "QPlainTextEdit QScrollBar:vertical {"
+        "  background: transparent;"
+        "  width: 10px;"
+        "  margin: 4px 2px 4px 2px;"
+        "}"
+        "QPlainTextEdit QScrollBar::handle:vertical {"
+        "  background: #4a4a4a;"
+        "  min-height: 24px;"
+        "  border-radius: 5px;"
+        "}"
+        "QPlainTextEdit QScrollBar::handle:vertical:hover {"
+        "  background: #569cd6;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-line:vertical,"
+        "QPlainTextEdit QScrollBar::sub-line:vertical {"
+        "  height: 0px;"
+        "  background: none;"
+        "  border: none;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-page:vertical,"
+        "QPlainTextEdit QScrollBar::sub-page:vertical {"
+        "  background: transparent;"
+        "}"
+        "QPlainTextEdit QScrollBar:horizontal {"
+        "  background: transparent;"
+        "  height: 10px;"
+        "  margin: 2px 4px 2px 4px;"
+        "}"
+        "QPlainTextEdit QScrollBar::handle:horizontal {"
+        "  background: #4a4a4a;"
+        "  min-width: 24px;"
+        "  border-radius: 5px;"
+        "}"
+        "QPlainTextEdit QScrollBar::handle:horizontal:hover {"
+        "  background: #569cd6;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-line:horizontal,"
+        "QPlainTextEdit QScrollBar::sub-line:horizontal {"
+        "  width: 0px;"
+        "  background: none;"
+        "  border: none;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-page:horizontal,"
+        "QPlainTextEdit QScrollBar::sub-page:horizontal {"
+        "  background: transparent;"
+        "}");
+    logLayout->addWidget(m_logView);
+    layout->addWidget(logCard);
 
     return page;
 }
@@ -967,6 +1069,16 @@ void MainWindow::saveSettings()
     QString outDevText = m_settOutputDevice->currentText();
     m_configMgr->setOutputDevice(outDevText == "(Default)" ? QString() : outDevText);
 
+    QHash<int, bool> reconnectStates;
+    if (m_manager) {
+        for (int i = 0; i < m_manager->count(); ++i) {
+            Hotspot *hs = m_manager->hotspot(i);
+            if (!hs)
+                continue;
+            reconnectStates.insert(hs->configIndex(), hs->state() != Hotspot::State::Disconnected);
+        }
+    }
+
     for (int i = 0; i < m_settTgRows.size() && i < m_configMgr->hotspotCount(); ++i) {
         m_configMgr->setHotspotName(i, m_settTgRows[i].name->text());
         m_configMgr->setHotspotSuffix(i, m_settTgRows[i].suffix->value());
@@ -985,19 +1097,50 @@ void MainWindow::saveSettings()
 
     bool saved = m_configMgr->save();
     bool audioApplied = false;
-    if (saved && m_audio) {
-        audioApplied = m_audio->initialize(m_configMgr->inputDevice(), m_configMgr->outputDevice());
+    if (saved) {
+        if (m_audio) {
+            m_audio->stopCapture();
+            m_audio->resetPlayback();
+            audioApplied = m_audio->initialize(m_configMgr->inputDevice(), m_configMgr->outputDevice());
+        }
+
+        if (m_manager) {
+            m_manager->loadFromConfig(m_configMgr);
+            rebuildHotspotsPage();
+            wireHotspotConnections();
+
+            for (int i = 0; i < m_manager->count(); ++i) {
+                Hotspot *hs = m_manager->hotspot(i);
+                if (!hs)
+                    continue;
+
+                if (reconnectStates.value(hs->configIndex(), false))
+                    hs->connectToServer();
+            }
+        }
+
+        updateMainPttState();
     }
 
     if (saved) {
         addLog("Settings saved to " + m_configMgr->configPath());
-        if (audioApplied) {
-            QMessageBox::information(this, "Settings",
-                "Settings saved successfully.\nAudio input and output were updated.");
-        } else {
-            QMessageBox::information(this, "Settings",
-                "Settings saved successfully.\nAudio settings were saved, but the selected devices could not be applied right now.");
-        }
+        if (!audioApplied)
+            addLog("Audio device settings could not be applied right now.");
+
+        QMessageBox box(this);
+        box.setIcon(QMessageBox::Information);
+        box.setWindowTitle("Settings");
+        box.setText("Settings saved successfully.");
+        box.setStandardButtons(QMessageBox::Ok);
+        box.setStyleSheet(
+            "QMessageBox { background-color: #2d2d2d; }"
+            "QMessageBox QWidget { background-color: #2d2d2d; }"
+            "QMessageBox QFrame { background-color: #2d2d2d; }"
+            "QMessageBox QLabel { color: #d4d4d4; background-color: transparent; }"
+            "QMessageBox QPushButton { min-width: 80px; background-color: #2d2d2d; color: #d4d4d4; "
+            "border: 1px solid #3d3d3d; padding: 6px 14px; border-radius: 4px; }"
+            "QMessageBox QPushButton:hover { background-color: #3a3a3a; border-color: #505050; }");
+        box.exec();
     } else {
         addLog("Error: Failed to save settings!");
         QMessageBox::warning(this, "Error", "Failed to save settings.");

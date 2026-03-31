@@ -64,6 +64,8 @@ private:
     HotspotRow createHotspotRow(int index, Hotspot *hs);
     void updateRowState(int index);
     void updateMainPttState();
+    void wireHotspotConnections();
+    void rebuildHotspotsPage();
     void loadSettingsToUi();
     void loadDmrIds();
 

@@ -1,6 +1,7 @@
 #include "HotspotManager.h"
 #include "ConfigManager.h"
 #include <QDebug>
+#include <QtAlgorithms>
 
 HotspotManager::HotspotManager(QObject *parent)
     : QObject(parent)
@@ -30,6 +31,11 @@ bool HotspotManager::loadFromConfig(ConfigManager *cfg)
 {
     if (!cfg)
         return false;
+
+    qDeleteAll(m_hotspots);
+    m_hotspots.clear();
+    m_activeTxIndex = -1;
+    m_mainIndex = -1;
 
     QString host     = cfg->host();
     quint16 port     = cfg->port();
