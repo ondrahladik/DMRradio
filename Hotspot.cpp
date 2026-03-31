@@ -66,6 +66,11 @@ Hotspot::Hotspot(const Config &cfg, QObject *parent)
     m_txTimer->setInterval(TX_FRAME_INTERVAL_MS);
     connect(m_txTimer, &QTimer::timeout, this, &Hotspot::onTxTimer);
 
+    m_rxSilenceTimer = new QTimer(this);
+    m_rxSilenceTimer->setSingleShot(true);
+    m_rxSilenceTimer->setInterval(RX_SILENCE_TIMEOUT_MS);
+    connect(m_rxSilenceTimer, &QTimer::timeout, this, &Hotspot::onRxSilenceTimeout);
+
     m_encoder = new AmbeEncoder();
 }
 
@@ -128,6 +133,13 @@ void Hotspot::disconnectFromServer()
     m_socket->blockSignals(true);
     m_socket->close();
     setState(State::Disconnected);
+
+    // Clear any active RX stream on disconnect
+    if (m_rxStreamActive) {
+        m_rxStreamActive = false;
+        m_rxSilenceTimer->stop();
+        emit voiceStreamEnded();
+    }
 
     emit logMessage(QString("[%1] DISCONNECTED").arg(m_config.name));
 }
@@ -379,19 +391,24 @@ void Hotspot::processDatagram(const QByteArray &data)
             else if (dt == 0x02) frameDesc = "Voice Terminator";
             else                 frameDesc = QString("Data (type %1)").arg(dt);
 
-            // Reset decoder state at stream boundaries (header & terminator)
             if (dt == 0x01 || dt == 0x02) {
                 m_rxSkipFrames = (dt == 0x01) ? 3 : 0;
-                if (dt == 0x01)
+                if (dt == 0x01) {
+                    m_rxLastSrcId = srcId;
+                    m_rxLastDstId = dstId;
+                    m_rxStreamActive = true;
+                    m_rxSilenceTimer->start();
                     emit voiceStreamStarted(srcId, dstId);
-                else
+                } else {
+                    m_rxStreamActive = false;
+                    m_rxSilenceTimer->stop();
                     emit voiceStreamEnded();
+                }
             }
         } else {
             frameDesc = QString("Voice seq=%1").arg(flags & 0x0F);
         }
 
-        // Log headers/terminators always; voice frames only at seq=0 to reduce flood
         bool isVoiceFrame = (ftype == 0x00 || ftype == 0x01);
         if (!isVoiceFrame || (flags & 0x0F) == 0) {
             emit logMessage(QString("[%1] RX DMRD: seq=%2 src=%3 dst=%4 TS%5 %6 %7")
@@ -410,6 +427,17 @@ void Hotspot::processDatagram(const QByteArray &data)
                 m_rxSkipFrames--;
                 return;
             }
+
+            // Recover from a lost voice header packet
+            if (!m_rxStreamActive) {
+                m_rxLastSrcId = srcId;
+                m_rxLastDstId = dstId;
+                m_rxStreamActive = true;
+                emit voiceStreamStarted(srcId, dstId);
+            }
+
+            m_rxSilenceTimer->start();
+
             QByteArray ambePayload = data.mid(20, 33);
             emit audioDataReceived(ambePayload);
         }
@@ -584,4 +612,14 @@ void Hotspot::sendPacket(const QByteArray &data)
         m_lastSentTag = "unknown";
     m_lastSentSize = data.size();
     m_socket->writeDatagram(data, m_serverAddress, m_config.port);
+}
+
+void Hotspot::onRxSilenceTimeout()
+{
+    if (!m_rxStreamActive)
+        return;
+
+    m_rxStreamActive = false;
+    emit logMessage(QString("[%1] RX stream timed out — clearing caller info").arg(m_config.name));
+    emit voiceStreamEnded();
 }

@@ -20,6 +20,7 @@ qt_add_executable(DMRradio
     Hotspot.h          Hotspot.cpp
     HotspotManager.h   HotspotManager.cpp
     AudioEngine.h      AudioEngine.cpp
+    AudioLevelBar.h    AudioLevelBar.cpp
     AmbeDecoder.h      AmbeDecoder.cpp
     AmbeEncoder.h      AmbeEncoder.cpp
     ConfigManager.h    ConfigManager.cpp
