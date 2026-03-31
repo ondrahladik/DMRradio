@@ -39,6 +39,7 @@ public:
 
 signals:
     void pcmCaptured(const QByteArray &data);
+    void audioLevelChanged(float level); // 0.0–1.0 RMS
     void logMessage(const QString &msg);
 
 private slots:
@@ -57,18 +58,15 @@ private:
     QString m_inputDeviceName;
     QString m_outputDeviceName;
 
-    // Actual capture format (may differ from target on Windows)
     int m_captureRate = 8000;
     int m_captureChannels = 1;
 
-    // Mic capture
     QAudioSource *m_audioSource = nullptr;
     QIODevice *m_micDevice = nullptr;
     QTimer *m_micPollTimer = nullptr;
     bool m_capturing = false;
     int m_micDebugCounter = 0;
 
-    // Speaker playback
     QAudioSink *m_audioSink = nullptr;
     QIODevice *m_speakerDevice = nullptr;
     QTimer *m_drainTimer = nullptr;

@@ -16,6 +16,8 @@
 #include <QHash>
 #include <QVector>
 
+#include "AudioLevelBar.h"
+
 class HotspotManager;
 class AudioEngine;
 class Hotspot;
@@ -53,6 +55,7 @@ private slots:
     void onVoiceCallEnded(int index);
     void addLog(const QString &msg);
     void saveSettings();
+    void syncCallerDisplay();
 
 private:
     void buildUi();
@@ -84,6 +87,12 @@ private:
     QLabel *m_targetLabel = nullptr;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_volumeValueLabel = nullptr;
+    AudioLevelBar *m_audioLevelBar = nullptr;
+
+    // Caller info display state
+    bool    m_callerActive = false;
+    quint32 m_callerSrcId = 0;
+    QTimer *m_callerSyncTimer = nullptr;
 
     // Navigation buttons
     QPushButton *m_navHotspots = nullptr;

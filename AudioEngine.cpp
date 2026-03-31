@@ -213,6 +213,18 @@ void AudioEngine::playPCM(const QByteArray &pcm)
     if (!m_initialized || !m_speakerDevice)
         return;
     m_playbackBuffer.append(pcm);
+
+    // Emit RMS level for the VU bargraph (RX — incoming audio)
+    const auto *s = reinterpret_cast<const int16_t *>(pcm.constData());
+    const int count = pcm.size() / 2;
+    if (count > 0) {
+        float sum = 0.0f;
+        for (int i = 0; i < count; i++) {
+            float v = s[i] / 32767.0f;
+            sum += v * v;
+        }
+        emit audioLevelChanged(std::sqrt(sum / count));
+    }
 }
 
 void AudioEngine::resetPlayback()
@@ -335,4 +347,18 @@ void AudioEngine::onMicPollTimer()
     }
 
     emit pcmCaptured(pcm);
+
+    // Emit RMS level for the VU bargraph (TX — microphone input)
+    {
+        const auto *s = reinterpret_cast<const int16_t *>(pcm.constData());
+        const int count = pcm.size() / 2;
+        if (count > 0) {
+            float sum = 0.0f;
+            for (int i = 0; i < count; i++) {
+                float v = s[i] / 32767.0f;
+                sum += v * v;
+            }
+            emit audioLevelChanged(std::sqrt(sum / count));
+        }
+    }
 }

@@ -101,6 +101,11 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
 
     wireHotspotConnections();
     loadSettingsToUi();
+
+    m_callerSyncTimer = new QTimer(this);
+    m_callerSyncTimer->setInterval(2000);
+    connect(m_callerSyncTimer, &QTimer::timeout, this, &MainWindow::syncCallerDisplay);
+    m_callerSyncTimer->start();
 }
 
 MainWindow::~MainWindow()
@@ -318,6 +323,31 @@ QWidget *MainWindow::createHotspotsPage()
     panelLayout->setColumnStretch(1, 1);
 
     layout->addWidget(panel);
+
+    // Audio level bargraph — full width, above volume control
+    auto *levelFrame = new QFrame();
+    levelFrame->setFrameShape(QFrame::StyledPanel);
+    levelFrame->setStyleSheet(
+        "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+
+    auto *levelLayout = new QHBoxLayout(levelFrame);
+    levelLayout->setContentsMargins(10, 8, 10, 8);
+    levelLayout->setSpacing(8);
+
+    auto *levelLabel = new QLabel("Audio");
+    levelLabel->setStyleSheet(
+        "QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+    levelLabel->setMinimumWidth(44);
+
+    m_audioLevelBar = new AudioLevelBar();
+
+    levelLayout->addWidget(levelLabel);
+    levelLayout->addWidget(m_audioLevelBar, 1);
+
+    if (m_audio)
+        connect(m_audio, &AudioEngine::audioLevelChanged, m_audioLevelBar, &AudioLevelBar::setLevel);
+
+    layout->addWidget(levelFrame);
 
     // Full-width playback volume control
     auto *volumeFrame = new QFrame();
@@ -909,6 +939,9 @@ void MainWindow::onPttChanged(int /*index*/, bool active)
 
 void MainWindow::onVoiceCallStarted(int /*index*/, quint32 srcId)
 {
+    m_callerActive = true;
+    m_callerSrcId  = srcId;
+
     if (m_callerLabel)
         m_callerLabel->setText(QString::number(srcId));
     if (m_callerCallsignLabel)
@@ -927,6 +960,9 @@ void MainWindow::onVoiceCallStarted(int /*index*/, quint32 srcId)
 
 void MainWindow::onVoiceCallEnded(int /*index*/)
 {
+    m_callerActive = false;
+    m_callerSrcId  = 0;
+
     if (m_callerLabel)
         m_callerLabel->setText("");
     if (m_callerCallsignLabel)
@@ -935,6 +971,28 @@ void MainWindow::onVoiceCallEnded(int /*index*/)
         m_callerNameLabel->setText("");
     if (m_targetLabel)
         m_targetLabel->setText("");
+}
+
+void MainWindow::syncCallerDisplay()
+{
+    bool anyStreamActive = false;
+    if (m_manager) {
+        for (int i = 0; i < m_manager->count(); ++i) {
+            const Hotspot *hs = m_manager->hotspot(i);
+            if (hs && hs->isRxStreamActive()) {
+                anyStreamActive = true;
+                break;
+            }
+        }
+    }
+
+    if (anyStreamActive == m_callerActive)
+        return;
+
+    if (!anyStreamActive && m_callerActive) {
+        addLog("[UI] Caller info out of sync — clearing stale display");
+        onVoiceCallEnded(0);
+    }
 }
 
 void MainWindow::updateRowState(int index)
