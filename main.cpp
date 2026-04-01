@@ -2,6 +2,13 @@
 #include <QDir>
 #include <QDebug>
 #include <QIcon>
+#include <QEvent>
+#include <QMouseEvent>
+#include <QLineEdit>
+#include <QAbstractSpinBox>
+#include <QGuiApplication>
+#include <QInputMethod>
+#include <QWidget>
 
 #include "ConfigManager.h"
 #include "HotspotManager.h"
@@ -52,6 +59,8 @@ QLineEdit, QSpinBox {
     selection-background-color: #264f78;
 }
 QLineEdit:focus, QSpinBox:focus { border-color: #569cd6; }
+QSpinBox::up-button, QSpinBox::down-button { width: 0px; height: 0px; border: none; }
+QSpinBox { padding-right: 0px; }
 QComboBox {
     background-color: #2d2d2d;
     color: #d4d4d4;
@@ -88,6 +97,41 @@ QMessageBox QLabel { color: #d4d4d4; }
 QMessageBox QPushButton { min-width: 80px; }
 )";
 
+// Clicking outside a focused input clears focus (and hides keyboard on Android).
+class ClickOutsideFilter : public QObject
+{
+public:
+    explicit ClickOutsideFilter(QObject *parent = nullptr) : QObject(parent) {}
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::MouseButtonPress) {
+            QWidget *focused = QApplication::focusWidget();
+            if (focused && (qobject_cast<QLineEdit *>(focused) ||
+                            qobject_cast<QAbstractSpinBox *>(focused))) {
+                auto *me = static_cast<QMouseEvent *>(event);
+                QWidget *clicked = QApplication::widgetAt(me->globalPosition().toPoint());
+                // Walk up parent hierarchy — QSpinBox has an internal QLineEdit child,
+                // so widgetAt() may return that child instead of the spinbox itself.
+                bool isInsideFocused = false;
+                QWidget *w = clicked;
+                while (w) {
+                    if (w == focused) { isInsideFocused = true; break; }
+                    w = w->parentWidget();
+                }
+                if (!isInsideFocused) {
+                    focused->clearFocus();
+#ifdef Q_OS_ANDROID
+                    QGuiApplication::inputMethod()->hide();
+#endif
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -95,6 +139,7 @@ int main(int argc, char *argv[])
     app.setApplicationVersion("1.0.3");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.setStyleSheet(APP_DARK_STYLE);
+    app.installEventFilter(new ClickOutsideFilter(&app));
 
 #ifdef Q_OS_ANDROID
     // Larger text on Android for readability on high-DPI touch screens
