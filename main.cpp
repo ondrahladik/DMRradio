@@ -96,8 +96,10 @@ int main(int argc, char *argv[])
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.setStyleSheet(APP_DARK_STYLE);
 
-    // Locate config.json next to the executable
-    QString configPath = QDir(QCoreApplication::applicationDirPath()).filePath("config.json");
+    // Locate config.json — resolves platform-specific path automatically.
+    // On Windows: next to exe, then AppData fallback.
+    // On Android: AppDataLocation (seeded from :/config.json on first run).
+    const QString configPath = ConfigManager::resolveConfigPath();
 
     ConfigManager config;
     if (!config.load(configPath)) {

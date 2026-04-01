@@ -4,5 +4,6 @@
         <file>icons/connect.png</file>
         <file>icons/disconnect.png</file>
         <file>icons/abort.png</file>
+        <file>config.json</file>
     </qresource>
 </RCC>
