@@ -1254,7 +1254,7 @@ void MainWindow::updateRowState(int index)
 
 void MainWindow::updateMainPttState()
 {
-    if (!m_mainPttBtn) return;
+    if (!m_mainPttBtn || !m_manager) return;
 
     int mainIdx = m_manager->mainHotspotIndex();
     if (mainIdx < 0) {
