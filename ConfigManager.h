@@ -11,6 +11,12 @@ class ConfigManager
 public:
     ConfigManager() = default;
 
+    // Returns the platform-appropriate path to config.json.
+    // Priority: exe-dir (non-Android) → writable AppData → resource fallback.
+    // If not found on disk, the default is copied from :/config.json to writable
+    // AppData so subsequent saves work correctly on all platforms.
+    static QString resolveConfigPath();
+
     bool load(const QString &path);
     bool save(const QString &path);
     bool save();
