@@ -96,6 +96,18 @@ int main(int argc, char *argv[])
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.setStyleSheet(APP_DARK_STYLE);
 
+#ifdef Q_OS_ANDROID
+    // Larger text on Android for readability on high-DPI touch screens
+    app.setStyleSheet(QString(APP_DARK_STYLE) + R"(
+        QWidget { font-size: 13pt; }
+        QLabel { font-size: 13pt; }
+        QPushButton { font-size: 13pt; }
+        QLineEdit, QSpinBox, QComboBox { font-size: 13pt; }
+        QCheckBox, QRadioButton { font-size: 13pt; }
+        QPlainTextEdit { font-size: 11pt; }
+    )");
+#endif
+
     // Locate config.json — resolves platform-specific path automatically.
     // On Windows: next to exe, then AppData fallback.
     // On Android: AppDataLocation (seeded from :/config.json on first run).
@@ -119,7 +131,11 @@ int main(int argc, char *argv[])
     }
 
     MainWindow window(&manager, &audio, &config);
+#ifdef Q_OS_ANDROID
+    window.showMaximized();
+#else
     window.show();
+#endif
 
     return app.exec();
 }
