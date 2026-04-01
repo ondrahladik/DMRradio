@@ -71,6 +71,8 @@ private:
     void rebuildHotspotsPage();
     void loadSettingsToUi();
     void loadDmrIds();
+    void checkAndUpdateDmrIds();
+    static QString dmrIdsWritablePath();
 
     HotspotManager *m_manager = nullptr;
     AudioEngine *m_audio = nullptr;
@@ -121,6 +123,8 @@ private:
     QButtonGroup *m_mainGroup = nullptr;
 
     QHash<quint32, QPair<QString, QString>> m_dmrLookup;
+
+    QLabel *m_dmrIdsDateLabel = nullptr;  // About page — updated after auto-download
 };
 
 #endif // MAINWINDOW_H

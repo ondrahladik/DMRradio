@@ -22,6 +22,11 @@
 #include <QTime>
 #include <QDateTime>
 #include <QFileInfo>
+#include <QDir>
+#include <QStandardPaths>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
+#include <QNetworkReply>
 #include <QDebug>
 #include <QAudioDevice>
 #include <QSlider>
@@ -93,6 +98,7 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
 #endif
     buildUi();
     loadDmrIds();
+    checkAndUpdateDmrIds();
 
     // Wire manager signals
     connect(m_manager, &HotspotManager::logMessage, this, &MainWindow::addLog);
@@ -630,9 +636,9 @@ QWidget *MainWindow::createAboutPage()
         const QString dmrPath = QCoreApplication::applicationDirPath() + "/DMRIds.dat";
         QFileInfo fi(dmrPath);
         QString dmrIdsDate = fi.exists() ? fi.lastModified().toString("yyyy-MM-dd") : QStringLiteral("(not found)");
-        auto *dmrIdsDateLabel = new QLabel(dmrIdsDate);
-        dmrIdsDateLabel->setStyleSheet("QLabel { color: #bdbdbd; border: none; background: transparent; }");
-        addRow(5, "ID update", dmrIdsDateLabel);
+        m_dmrIdsDateLabel = new QLabel(dmrIdsDate);
+        m_dmrIdsDateLabel->setStyleSheet("QLabel { color: #bdbdbd; border: none; background: transparent; }");
+        addRow(5, "ID update", m_dmrIdsDateLabel);
     }
 #endif
 
@@ -1314,19 +1320,87 @@ void MainWindow::loadSettingsToUi()
     }
 }
 
-void MainWindow::loadDmrIds()
+QString MainWindow::dmrIdsWritablePath()
 {
 #ifdef Q_OS_ANDROID
-    // On Android the file system next to the APK is not accessible.
-    // DMRIds.dat is embedded as a Qt resource and read directly from there.
-    const QString dmrIdsPath = QStringLiteral(":/DMRIds.dat");
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return QDir(dir).filePath("DMRIds.dat");
 #else
-    // On desktop look for the file next to the executable.
-    const QString dmrIdsPath = QCoreApplication::applicationDirPath() + "/DMRIds.dat";
+    return QCoreApplication::applicationDirPath() + "/DMRIds.dat";
 #endif
-    m_dmrLookup = loadDmrLookup(dmrIdsPath);
-    addLog(QString("DMR ID lookup loaded: %1 entries from %2")
-               .arg(m_dmrLookup.size()).arg(dmrIdsPath));
+}
+
+void MainWindow::loadDmrIds()
+{
+    const QString writablePath = dmrIdsWritablePath();
+
+#ifdef Q_OS_ANDROID
+    // Prefer a previously downloaded file; fall back to embedded resource.
+    if (QFile::exists(writablePath))
+        m_dmrLookup = loadDmrLookup(writablePath);
+    else
+        m_dmrLookup = loadDmrLookup(QStringLiteral(":/DMRIds.dat"));
+#else
+    m_dmrLookup = loadDmrLookup(writablePath);
+#endif
+    addLog(QString("DMR ID lookup loaded: %1 entries").arg(m_dmrLookup.size()));
+}
+
+void MainWindow::checkAndUpdateDmrIds()
+{
+    const QString path = dmrIdsWritablePath();
+    const QFileInfo fi(path);
+
+    // Skip download if the file exists and is less than 24 hours old.
+    if (fi.exists() &&
+        fi.lastModified().secsTo(QDateTime::currentDateTime()) < 86400) {
+        addLog("DMRIds.dat is up to date.");
+        return;
+    }
+
+    addLog("DMRIds.dat is outdated or missing — downloading update...");
+
+    auto *nam = new QNetworkAccessManager(this);
+    QNetworkRequest req(QUrl("https://odska.cz/DMRIds.dat"));
+    req.setTransferTimeout(30000);
+    QNetworkReply *reply = nam->get(req);
+
+    connect(reply, &QNetworkReply::finished, this, [this, reply, path, nam]() {
+        reply->deleteLater();
+        nam->deleteLater();
+
+        if (reply->error() != QNetworkReply::NoError) {
+            addLog("DMRIds.dat download failed: " + reply->errorString());
+            return;
+        }
+
+        const QByteArray data = reply->readAll();
+        if (data.isEmpty()) {
+            addLog("DMRIds.dat download returned empty file.");
+            return;
+        }
+
+        // Ensure directory exists (important on Android)
+        QDir().mkpath(QFileInfo(path).absolutePath());
+
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly)) {
+            addLog("DMRIds.dat: cannot write to " + path);
+            return;
+        }
+        file.write(data);
+        file.close();
+
+        // Reload lookup with fresh data
+        m_dmrLookup = loadDmrLookup(path);
+        addLog(QString("DMRIds.dat updated: %1 entries").arg(m_dmrLookup.size()));
+
+        // Update About page date label
+        if (m_dmrIdsDateLabel) {
+            QFileInfo fiNew(path);
+            m_dmrIdsDateLabel->setText(fiNew.lastModified().toString("yyyy-MM-dd"));
+        }
+    });
 }
 
 void MainWindow::saveSettings()
