@@ -20,9 +20,14 @@
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QTime>
+#include <QDateTime>
+#include <QFileInfo>
 #include <QDebug>
 #include <QAudioDevice>
 #include <QSlider>
+#ifdef Q_OS_ANDROID
+#include <QScroller>
+#endif
 
 namespace {
 
@@ -78,9 +83,14 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     , m_decoder(new AmbeDecoder())
 {
     setWindowTitle("DMR radio");
+#ifdef Q_OS_ANDROID
+    // On Android let the window fill the screen; layout stays compact.
+    setMinimumWidth(340);
+#else
     setFixedWidth(340);
     setFixedHeight(480);
     resize(340, 480);
+#endif
     buildUi();
     loadDmrIds();
 
@@ -194,11 +204,19 @@ void MainWindow::buildUi()
     m_navLog      = new QPushButton("Log");
     m_navAbout    = new QPushButton("About");
 
-    const QString navStyle =
+    QString navStyle =
         "QPushButton { background: transparent; color: #bdbdbd; border: none; "
-        "padding: 4px 2px; font-size: 9pt; }"
-        "QPushButton:hover { color: #ffffff; }"
-        "QPushButton[navActive=\"true\"] { color: #4fc3f7; border-bottom: 2px solid #4fc3f7; }";
+        "padding: 4px 2px; font-size: 9pt; }";
+
+    #ifdef Q_OS_ANDROID
+        navStyle =
+            "QPushButton { background: transparent; color: #bdbdbd; border: none; "
+            "padding: 4px 2px; font-size: 16pt; }";
+    #endif
+
+        navStyle +=
+            "QPushButton:hover { color: #ffffff; }"
+            "QPushButton[navActive=\"true\"] { color: #4fc3f7; border-bottom: 2px solid #4fc3f7; }";
 
     for (auto *btn : {m_navHotspots, m_navSettings, m_navLog, m_navAbout}) {
         btn->setFixedHeight(26);
@@ -248,8 +266,13 @@ QWidget *MainWindow::createHotspotsPage()
 {
     auto *page = new QWidget();
     auto *layout = new QVBoxLayout(page);
+#ifdef Q_OS_ANDROID
+    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setSpacing(4);
+#else
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(6);
+#endif
     m_rows.clear();
 
     // Hotspot rows: [● Name] [TG:spin] [CONNECT] [PTT]
@@ -259,7 +282,12 @@ QWidget *MainWindow::createHotspotsPage()
         m_rows.append(row);
 
         auto *rowLayout = new QHBoxLayout();
+#ifdef Q_OS_ANDROID
+        rowLayout->setSpacing(6);
+        rowLayout->setContentsMargins(0, 2, 0, 2);
+#else
         rowLayout->setSpacing(4);
+#endif
         rowLayout->addWidget(row.dotLabel);
         rowLayout->addWidget(row.nameLabel, 1);
         rowLayout->addWidget(row.txTgSpin);
@@ -276,7 +304,7 @@ QWidget *MainWindow::createHotspotsPage()
         }
     }
 
-    layout->addStretch();
+
 
     // Caller / target panel (always visible, above PTT)
     auto *panel = new QFrame();
@@ -292,15 +320,25 @@ QWidget *MainWindow::createHotspotsPage()
     auto addInfoRow = [panelLayout](int row, const QString &titleText, QLabel *&valueLabel,
                                     const QString &valueColor, int fontSize) {
         auto *title = new QLabel(titleText);
+#ifdef Q_OS_ANDROID
+        title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 18pt; font-weight: bold; border: none; background: transparent; }");
+#else
         title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+#endif
         panelLayout->addWidget(title, row, 0);
 
         valueLabel = new QLabel("");
         valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+#ifdef Q_OS_ANDROID
+        const int androidFontSize = fontSize + 6;
         valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; border: none; background: transparent; }")
-                                      .arg(valueColor)
-                                      .arg(fontSize));
+                                      .arg(valueColor).arg(androidFontSize));
+        valueLabel->setMinimumHeight(30);
+#else
+        valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; border: none; background: transparent; }")
+                                      .arg(valueColor).arg(fontSize));
         valueLabel->setMinimumHeight(22);
+#endif
         panelLayout->addWidget(valueLabel, row, 1);
     };
 
@@ -309,14 +347,24 @@ QWidget *MainWindow::createHotspotsPage()
     addInfoRow(2, "DMR ID:", m_callerLabel, "#3fc3f7", 12);
 
     auto *targetTitle = new QLabel("Target:");
+#ifdef Q_OS_ANDROID
+    targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 18pt; font-weight: bold; border: none; background: transparent; }");
+#else
     targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+#endif
     panelLayout->addWidget(targetTitle, 3, 0);
 
     m_targetLabel = new QLabel("");
     m_targetLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+#ifdef Q_OS_ANDROID
+    m_targetLabel->setStyleSheet(
+        "QLabel { color: #3fc3f7; font-size: 16pt; font-weight: bold; border: none; background: transparent; }");
+    m_targetLabel->setMinimumHeight(30);
+#else
     m_targetLabel->setStyleSheet(
         "QLabel { color: #3fc3f7; font-size: 10pt; font-weight: bold; border: none; background: transparent; }");
     m_targetLabel->setMinimumHeight(22);
+#endif
     panelLayout->addWidget(m_targetLabel, 3, 1);
 
     panelLayout->setColumnStretch(0, 0);
@@ -331,13 +379,26 @@ QWidget *MainWindow::createHotspotsPage()
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
 
     auto *levelLayout = new QHBoxLayout(levelFrame);
+#ifdef Q_OS_ANDROID
+    levelLayout->setContentsMargins(8, 2, 8, 2);
+    levelLayout->setSpacing(6);
+#else
     levelLayout->setContentsMargins(10, 8, 10, 8);
     levelLayout->setSpacing(8);
+#endif
 
     auto *levelLabel = new QLabel("Audio");
-    levelLabel->setStyleSheet(
+
+    #ifdef Q_OS_ANDROID
+        levelLabel->setStyleSheet(
+            "QLabel { color: #9e9e9e; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
+        levelLabel->setMinimumWidth(44);
+    #else
+        levelLabel->setStyleSheet(
         "QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
-    levelLabel->setMinimumWidth(44);
+        levelLabel->setMinimumWidth(44);
+    #endif
+
 
     m_audioLevelBar = new AudioLevelBar();
 
@@ -356,11 +417,22 @@ QWidget *MainWindow::createHotspotsPage()
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
 
     auto *volumeLayout = new QHBoxLayout(volumeFrame);
+#ifdef Q_OS_ANDROID
+    volumeLayout->setContentsMargins(8, 2, 8, 2);
+    volumeLayout->setSpacing(6);
+#else
     volumeLayout->setContentsMargins(10, 8, 10, 8);
     volumeLayout->setSpacing(8);
+#endif
 
     auto *volumeLabel = new QLabel("Volume");
-    volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+
+    #ifdef Q_OS_ANDROID
+        volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
+    #else
+        volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+    #endif
+
     volumeLabel->setMinimumWidth(44);
 
     m_volumeSlider = new QSlider(Qt::Horizontal);
@@ -370,6 +442,38 @@ QWidget *MainWindow::createHotspotsPage()
     m_volumeSlider->setTickInterval(10);
     m_volumeSlider->setTickPosition(QSlider::NoTicks);
     m_volumeSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+#ifdef Q_OS_ANDROID
+    m_volumeSlider->setMinimumHeight(44);
+    m_volumeSlider->setStyleSheet(
+        "QSlider::groove:horizontal {"
+        "  height: 12px;"
+        "  background: #2b2b2b;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-radius: 6px;"
+        "}"
+        "QSlider::sub-page:horizontal {"
+        "  background: #569cd6;"
+        "  border: 1px solid #569cd6;"
+        "  border-radius: 6px;"
+        "}"
+        "QSlider::add-page:horizontal {"
+        "  background: #2b2b2b;"
+        "  border: 1px solid #3d3d3d;"
+        "  border-radius: 6px;"
+        "}"
+        "QSlider::handle:horizontal {"
+        "  background: #d4d4d4;"
+        "  border: 1px solid #5a5a5a;"
+        "  width: 32px;"
+        "  height: 32px;"
+        "  margin: -10px 0;"
+        "  border-radius: 16px;"
+        "}"
+        "QSlider::handle:horizontal:hover {"
+        "  background: #ffffff;"
+        "  border-color: #569cd6;"
+        "}");
+#else
     m_volumeSlider->setMinimumHeight(24);
     m_volumeSlider->setStyleSheet(
         "QSlider::groove:horizontal {"
@@ -399,11 +503,16 @@ QWidget *MainWindow::createHotspotsPage()
         "  background: #ffffff;"
         "  border-color: #569cd6;"
         "}");
+#endif
 
     m_volumeValueLabel = new QLabel("100%");
     m_volumeValueLabel->setMinimumWidth(40);
     m_volumeValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; border: none; background: transparent; }");
+    #ifdef Q_OS_ANDROID
+        m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
+    #else
+        m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; border: none; background: transparent; }");
+    #endif
 
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_volumeValueLabel)
@@ -422,14 +531,30 @@ QWidget *MainWindow::createHotspotsPage()
 
     // Main PTT button at the bottom
     m_mainPttBtn = new QPushButton("PTT");
+#ifdef Q_OS_ANDROID
+    m_mainPttBtn->setFixedHeight(80);
+    m_mainPttBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+#else
     m_mainPttBtn->setMinimumHeight(60);
+#endif
     m_mainPttBtn->setEnabled(false);
-    m_mainPttBtn->setStyleSheet(
-        "QPushButton { background-color: #2d2d2d; color: #d4d4d4; font-size: 16pt; "
+
+    QString pttStyle;
+
+#ifdef Q_OS_ANDROID
+    pttStyle = "QPushButton { font-size: 28pt; ";
+#else
+    pttStyle = "QPushButton { font-size: 16pt; ";
+#endif
+
+    pttStyle +=
+        "background-color: #2d2d2d; color: #d4d4d4; "
         "font-weight: bold; border: 2px solid #3d3d3d; border-radius: 8px; }"
         "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
         "QPushButton:pressed { background-color: #b71c1c; border-color: #ef5350; color: #ffffff; }"
-        "QPushButton:disabled { color: #555555; background-color: #252525; border-color: #303030; }");
+        "QPushButton:disabled { color: #555555; background-color: #252525; border-color: #303030; }";
+
+    m_mainPttBtn->setStyleSheet(pttStyle);
 
     connect(m_mainPttBtn, &QPushButton::pressed, this, &MainWindow::onMainPttPressed);
     connect(m_mainPttBtn, &QPushButton::released, this, &MainWindow::onMainPttReleased);
@@ -500,6 +625,17 @@ QWidget *MainWindow::createAboutPage()
     web->setStyleSheet("QLabel { color: #4fc3f7; border: none; background: transparent; }");
     addRow(4, "Website", web);
 
+#ifndef Q_OS_ANDROID
+    {
+        const QString dmrPath = QCoreApplication::applicationDirPath() + "/DMRIds.dat";
+        QFileInfo fi(dmrPath);
+        QString dmrIdsDate = fi.exists() ? fi.lastModified().toString("yyyy-MM-dd") : QStringLiteral("(not found)");
+        auto *dmrIdsDateLabel = new QLabel(dmrIdsDate);
+        dmrIdsDateLabel->setStyleSheet("QLabel { color: #bdbdbd; border: none; background: transparent; }");
+        addRow(5, "ID update", dmrIdsDateLabel);
+    }
+#endif
+
     aboutLayout->setColumnStretch(0, 0);
     aboutLayout->setColumnStretch(1, 1);
     layout->addWidget(aboutCard);
@@ -519,14 +655,28 @@ QWidget *MainWindow::createSettingsPage()
     auto *scrollArea = new QScrollArea();
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
+#ifdef Q_OS_ANDROID
+    // On Android: show vertical scrollbar and enable touch kinetic scrolling
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    QScroller::grabGesture(scrollArea->viewport(), QScroller::LeftMouseButtonGesture);
+    QScrollerProperties props = QScroller::scroller(scrollArea->viewport())->scrollerProperties();
+    props.setScrollMetric(QScrollerProperties::DecelerationFactor, 0.3);
+    QScroller::scroller(scrollArea->viewport())->setScrollerProperties(props);
+#else
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scrollArea->setMinimumWidth(340);
     scrollArea->setMaximumWidth(340);
+#endif
 
     auto *scrollContent = new QWidget();
+#ifdef Q_OS_ANDROID
+    // Let content adapt to screen width
+#else
     scrollContent->setMinimumWidth(332);
     scrollContent->setMaximumWidth(332);
+#endif
     auto *layout = new QVBoxLayout(scrollContent);
     layout->setSpacing(10);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -738,6 +888,41 @@ QWidget *MainWindow::createLogPage()
     m_logView->setReadOnly(true);
     m_logView->setMaximumBlockCount(5000);
     m_logView->setFrameShape(QFrame::NoFrame);
+#ifdef Q_OS_ANDROID
+    // Disable text selection on Android so finger drag = scroll, not text select
+    m_logView->setTextInteractionFlags(Qt::NoTextInteraction);
+    QScroller::grabGesture(m_logView->viewport(), QScroller::LeftMouseButtonGesture);
+    QScrollerProperties logProps = QScroller::scroller(m_logView->viewport())->scrollerProperties();
+    logProps.setScrollMetric(QScrollerProperties::DecelerationFactor, 0.3);
+    QScroller::scroller(m_logView->viewport())->setScrollerProperties(logProps);
+    m_logView->setStyleSheet(
+        "QPlainTextEdit {"
+        "  background-color: transparent;"
+        "  color: #cccccc;"
+        "  border: none;"
+        "  padding: 8px;"
+        "}"
+        "QPlainTextEdit QScrollBar:vertical {"
+        "  background: #2a2a2a;"
+        "  width: 18px;"
+        "  margin: 2px;"
+        "  border-radius: 9px;"
+        "}"
+        "QPlainTextEdit QScrollBar::handle:vertical {"
+        "  background: #5a5a5a;"
+        "  min-height: 40px;"
+        "  border-radius: 7px;"
+        "  margin: 2px;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-line:vertical,"
+        "QPlainTextEdit QScrollBar::sub-line:vertical {"
+        "  height: 0px; background: none; border: none;"
+        "}"
+        "QPlainTextEdit QScrollBar::add-page:vertical,"
+        "QPlainTextEdit QScrollBar::sub-page:vertical {"
+        "  background: transparent;"
+        "}");
+#else
     m_logView->setStyleSheet(
         "QPlainTextEdit {"
         "  background-color: transparent;"
@@ -793,6 +978,7 @@ QWidget *MainWindow::createLogPage()
         "QPlainTextEdit QScrollBar::sub-page:horizontal {"
         "  background: transparent;"
         "}");
+#endif // Q_OS_ANDROID
     logLayout->addWidget(m_logView);
     layout->addWidget(logCard);
 
@@ -810,33 +996,52 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 
     // Status dot
     row.dotLabel = new QLabel();
+#ifdef Q_OS_ANDROID
+    row.dotLabel->setFixedSize(20, 20);
+    row.dotLabel->setStyleSheet(
+        "background-color: #cc3333; border-radius: 10px; border: none;");
+#else
     row.dotLabel->setFixedSize(14, 14);
     row.dotLabel->setStyleSheet(
         "background-color: #cc3333; border-radius: 7px; border: none;");
+#endif
 
     // Name
     row.nameLabel = new QLabel(hs->name());
     row.nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QFont boldFont = row.nameLabel->font();
     boldFont.setBold(true);
+#ifdef Q_OS_ANDROID
+    boldFont.setPointSize(boldFont.pointSize() + 3);
+#endif
     row.nameLabel->setFont(boldFont);
 
     // TX TG
     row.txTgSpin = new QSpinBox();
     row.txTgSpin->setRange(1, 999999);
-    row.txTgSpin->setMinimumWidth(65);
-    row.txTgSpin->setFixedHeight(28);
     row.txTgSpin->setPrefix("TG ");
     row.txTgSpin->setValue(hs->txTalkgroup());
+#ifdef Q_OS_ANDROID
+    row.txTgSpin->setMinimumWidth(90);
+    row.txTgSpin->setFixedHeight(39);
+#else
+    row.txTgSpin->setMinimumWidth(65);
+    row.txTgSpin->setFixedHeight(28);
+#endif
 
     connect(row.txTgSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [hs](int val) { hs->setTxTalkgroup(val); });
 
-    // 🔥 CONNECT BUTTON (SVG)
+    // CONNECT BUTTON
     row.connectBtn = new QPushButton();
+#ifdef Q_OS_ANDROID
+    row.connectBtn->setFixedSize(50, 39);
+    row.connectBtn->setIconSize(QSize(32, 32));
+#else
     row.connectBtn->setFixedSize(36, 28);
-    row.connectBtn->setIcon(QIcon(":/icons/connect.png"));
     row.connectBtn->setIconSize(QSize(24, 24));
+#endif
+    row.connectBtn->setIcon(QIcon(":/icons/connect.png"));
     row.connectBtn->setCursor(Qt::PointingHandCursor);
     row.connectBtn->setToolTip("Connect");
 
@@ -850,10 +1055,15 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
         onConnectClicked(index);
     });
 
-    // 🔴 PTT BUTTON
+    // PTT BUTTON
     row.pttBtn = new QPushButton("PTT");
+#ifdef Q_OS_ANDROID
+    row.pttBtn->setMinimumWidth(81);
+    row.pttBtn->setFixedHeight(39);
+#else
     row.pttBtn->setMinimumWidth(58);
     row.pttBtn->setFixedHeight(28);
+#endif
     row.pttBtn->setEnabled(false);
 
     row.pttBtn->setStyleSheet(
@@ -1005,26 +1215,29 @@ void MainWindow::updateRowState(int index)
 
     bool connected = false;
 
+#ifdef Q_OS_ANDROID
+    const QString dotStyle = QStringLiteral("border-radius: 10px;");
+#else
+    const QString dotStyle = QStringLiteral("border-radius: 7px;");
+#endif
+
     switch (hs->state()) {
 
     case Hotspot::State::Disconnected:
-        row.dotLabel->setStyleSheet(
-            "background-color: #cc3333; border-radius: 7px;");
+        row.dotLabel->setStyleSheet("background-color: #cc3333; " + dotStyle);
         row.connectBtn->setIcon(QIcon(":/icons/connect.png"));
         row.connectBtn->setToolTip("Connect");
         break;
 
     case Hotspot::State::Connected:
-        row.dotLabel->setStyleSheet(
-            "background-color: #33cc33; border-radius: 7px;");
+        row.dotLabel->setStyleSheet("background-color: #33cc33; " + dotStyle);
         row.connectBtn->setIcon(QIcon(":/icons/disconnect.png"));
         row.connectBtn->setToolTip("Disconnect");
         connected = true;
         break;
 
     default:
-        row.dotLabel->setStyleSheet(
-            "background-color: #cccc33; border-radius: 7px;");
+        row.dotLabel->setStyleSheet("background-color: #cccc33; " + dotStyle);
         row.connectBtn->setIcon(QIcon(":/icons/abort.png"));
         row.connectBtn->setToolTip("Abort");
         break;
@@ -1103,8 +1316,17 @@ void MainWindow::loadSettingsToUi()
 
 void MainWindow::loadDmrIds()
 {
+#ifdef Q_OS_ANDROID
+    // On Android the file system next to the APK is not accessible.
+    // DMRIds.dat is embedded as a Qt resource and read directly from there.
+    const QString dmrIdsPath = QStringLiteral(":/DMRIds.dat");
+#else
+    // On desktop look for the file next to the executable.
     const QString dmrIdsPath = QCoreApplication::applicationDirPath() + "/DMRIds.dat";
+#endif
     m_dmrLookup = loadDmrLookup(dmrIdsPath);
+    addLog(QString("DMR ID lookup loaded: %1 entries from %2")
+               .arg(m_dmrLookup.size()).arg(dmrIdsPath));
 }
 
 void MainWindow::saveSettings()
