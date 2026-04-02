@@ -30,9 +30,36 @@
 #include <QDebug>
 #include <QAudioDevice>
 #include <QSlider>
+#include <QStyleOptionSlider>
+#include <QMouseEvent>
 #ifdef Q_OS_ANDROID
 #include <QScroller>
 #endif
+
+class TouchSlider : public QSlider {
+public:
+    explicit TouchSlider(Qt::Orientation orientation, QWidget *parent = nullptr)
+        : QSlider(orientation, parent) {}
+protected:
+    void mousePressEvent(QMouseEvent *event) override {
+        if (orientation() == Qt::Horizontal) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            QRect groove = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderGroove, this);
+            QRect handle = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (!handle.contains(event->pos())) {
+                int sliderMin = groove.x() + handle.width() / 2;
+                int sliderMax = groove.right() - handle.width() / 2 + 1;
+                int val = QStyle::sliderValueFromPosition(
+                    minimum(), maximum(),
+                    event->pos().x() - sliderMin,
+                    sliderMax - sliderMin);
+                setValue(val);
+            }
+        }
+        QSlider::mousePressEvent(event);
+    }
+};
 
 namespace {
 
@@ -117,6 +144,8 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
 
     wireHotspotConnections();
     loadSettingsToUi();
+
+    setFocus();
 
     m_callerSyncTimer = new QTimer(this);
     m_callerSyncTimer->setInterval(2000);
@@ -229,6 +258,7 @@ void MainWindow::buildUi()
         btn->setFlat(true);
         btn->setCursor(Qt::PointingHandCursor);
         btn->setStyleSheet(navStyle);
+        btn->setFocusPolicy(Qt::NoFocus);
         navLayout->addWidget(btn, 1);
     }
     mainLayout->addLayout(navLayout);
@@ -274,7 +304,7 @@ QWidget *MainWindow::createHotspotsPage()
     auto *layout = new QVBoxLayout(page);
 #ifdef Q_OS_ANDROID
     layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(4);
+    layout->setSpacing(8);
 #else
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(6);
@@ -325,9 +355,14 @@ QWidget *MainWindow::createHotspotsPage()
         auto *cell = new QWidget();
         cell->setStyleSheet("background: transparent; border: none;");
         auto *cellLayout = new QVBoxLayout(cell);
+#ifdef Q_OS_ANDROID
         cellLayout->setContentsMargins(8, 6, 8, 6);
         cellLayout->setSpacing(2);
-        cellLayout->setAlignment(Qt::AlignCenter);
+        cellLayout->setAlignment(Qt::AlignTop);
+#else
+        cellLayout->setContentsMargins(8, 1, 8, 2);
+        cellLayout->setSpacing(0);
+#endif
 
         auto *title = new QLabel(labelText);
         title->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
@@ -347,66 +382,66 @@ QWidget *MainWindow::createHotspotsPage()
 #else
         valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; border: none; background: transparent; }")
                                       .arg(valueColor).arg(fontSize));
-        valueLabel->setMinimumHeight(22);
+        valueLabel->setMinimumHeight(5);
 #endif
 
         cellLayout->addWidget(title);
         cellLayout->addWidget(valueLabel);
+#ifndef Q_OS_ANDROID
+        cellLayout->addStretch(1);
+#endif
         return cell;
     };
 
-    auto *outerLayout = new QHBoxLayout(panel);
-    outerLayout->setContentsMargins(0, 0, 0, 0);
-    outerLayout->setSpacing(0);
+    // Grid layout: col 0 = left, col 1 = vertical divider, col 2 = right
+    //              row 0 = top cells, row 1 = horizontal divider, row 2 = bottom cells
+    // Guarantees both horizontal dividers sit at exactly the same height.
+    auto *grid = new QGridLayout(panel);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(0);
+    grid->setColumnStretch(0, 1);
+    grid->setColumnStretch(2, 1);
+    grid->setRowStretch(0, 1);
+    grid->setRowStretch(2, 1);
 
-    // Left half: Callsign (top) and DMR ID (bottom)
-    auto *leftHalf = new QWidget();
-    leftHalf->setStyleSheet("background: transparent; border: none;");
-    auto *leftLayout = new QVBoxLayout(leftHalf);
-    leftLayout->setContentsMargins(0, 0, 0, 0);
-    leftLayout->setSpacing(0);
-    leftLayout->addWidget(makeCell("Callsign", m_callerCallsignLabel, "#3fc3f7", 11));
-    auto *hLine1 = new QFrame();
-    hLine1->setFrameShape(QFrame::HLine);
-    hLine1->setFrameShadow(QFrame::Plain);
-    hLine1->setFixedHeight(1);
-    hLine1->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
-    leftLayout->addWidget(hLine1);
-    leftLayout->addWidget(makeCell("DMR ID", m_callerLabel, "#3fc3f7", 12));
+    grid->addWidget(makeCell("Callsign", m_callerCallsignLabel, "#3fc3f7", 11), 0, 0);
+    grid->addWidget(makeCell("Name",     m_callerNameLabel,     "#3fc3f7", 10), 0, 2);
 
-    // Vertical divider spanning the full height of the panel
+    const QString divStyle = "QFrame { background-color: #252525; color: #252525; border: none; }";
+
+    // Single horizontal divider in row 1 — spans all 3 columns so both sides align perfectly
+    auto *hLine = new QFrame();
+    hLine->setFrameShape(QFrame::HLine);
+    hLine->setFrameShadow(QFrame::Plain);
+    hLine->setFixedHeight(1);
+    hLine->setStyleSheet(divStyle);
+    grid->addWidget(hLine, 1, 0, 1, 3);
+
+    grid->addWidget(makeCell("DMR ID", m_callerLabel,  "#3fc3f7", 12), 2, 0);
+    grid->addWidget(makeCell("Target", m_targetLabel,  "#3fc3f7", 10), 2, 2);
+
+    // Vertical divider in col 1 — spans all 3 rows
     auto *vLine = new QFrame();
     vLine->setFrameShape(QFrame::VLine);
     vLine->setFrameShadow(QFrame::Plain);
     vLine->setFixedWidth(1);
-    vLine->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
+    vLine->setStyleSheet(divStyle);
+    grid->addWidget(vLine, 0, 1, 3, 1);
 
-    // Right half: Name (top) and Target (bottom)
-    auto *rightHalf = new QWidget();
-    rightHalf->setStyleSheet("background: transparent; border: none;");
-    auto *rightLayout = new QVBoxLayout(rightHalf);
-    rightLayout->setContentsMargins(0, 0, 0, 0);
-    rightLayout->setSpacing(0);
-    rightLayout->addWidget(makeCell("Name", m_callerNameLabel, "#3fc3f7", 10));
-    auto *hLine2 = new QFrame();
-    hLine2->setFrameShape(QFrame::HLine);
-    hLine2->setFrameShadow(QFrame::Plain);
-    hLine2->setFixedHeight(1);
-    hLine2->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
-    rightLayout->addWidget(hLine2);
-    rightLayout->addWidget(makeCell("Target", m_targetLabel, "#3fc3f7", 10));
-
-    outerLayout->addWidget(leftHalf, 1);
-    outerLayout->addWidget(vLine);
-    outerLayout->addWidget(rightHalf, 1);
-
+#ifdef Q_OS_ANDROID
+    layout->addWidget(panel, 1);  // stretch to fill available space
+#else
     layout->addWidget(panel);
+#endif
 
     // Audio level bargraph — full width, above volume control
     auto *levelFrame = new QFrame();
     levelFrame->setFrameShape(QFrame::StyledPanel);
     levelFrame->setStyleSheet(
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+#ifdef Q_OS_ANDROID
+    levelFrame->setFixedHeight(60);
+#endif
 
     auto *levelLayout = new QHBoxLayout(levelFrame);
 #ifdef Q_OS_ANDROID
@@ -445,6 +480,9 @@ QWidget *MainWindow::createHotspotsPage()
     volumeFrame->setFrameShape(QFrame::StyledPanel);
     volumeFrame->setStyleSheet(
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
+#ifdef Q_OS_ANDROID
+    volumeFrame->setFixedHeight(60);
+#endif
 
     auto *volumeLayout = new QHBoxLayout(volumeFrame);
 #ifdef Q_OS_ANDROID
@@ -465,7 +503,7 @@ QWidget *MainWindow::createHotspotsPage()
 
     volumeLabel->setMinimumWidth(44);
 
-    m_volumeSlider = new QSlider(Qt::Horizontal);
+    m_volumeSlider = new TouchSlider(Qt::Horizontal);
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setSingleStep(1);
     m_volumeSlider->setPageStep(10);
@@ -547,6 +585,17 @@ QWidget *MainWindow::createHotspotsPage()
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_volumeValueLabel)
             m_volumeValueLabel->setText(QString::number(value) + "%");
+        // Keep mute button icon in sync with actual volume level
+        bool shouldBeMuted = (value == 0);
+        if (shouldBeMuted != m_isMuted) {
+            m_isMuted = shouldBeMuted;
+            if (m_muteBtn) {
+                m_muteBtn->setIcon(QIcon(m_isMuted ? ":/icons/mute-on.png" : ":/icons/mute-off.png"));
+#ifndef Q_OS_ANDROID
+                m_muteBtn->setToolTip(m_isMuted ? "Unmute" : "Mute");
+#endif
+            }
+        }
         if (m_audio)
             m_audio->setPlaybackVolume(value);
     });
@@ -559,10 +608,55 @@ QWidget *MainWindow::createHotspotsPage()
 
     layout->addWidget(volumeFrame);
 
+    // Extra buttons row (placeholder + mute)
+    auto *btnRowWidget = new QWidget();
+    auto *btnRowLayout = new QHBoxLayout(btnRowWidget);
+    btnRowLayout->setContentsMargins(0, 0, 0, 0);
+    btnRowLayout->setSpacing(6);
+
+#ifdef Q_OS_ANDROID
+    const int btnIconSize = 36;
+    const int btnHeight   = 54;
+#else
+    const int btnIconSize = 20;
+    const int btnHeight   = 32;
+#endif
+
+    auto makeIconBtn = [&](const QString &iconPath) -> QPushButton * {
+        auto *btn = new QPushButton();
+        btn->setIcon(QIcon(iconPath));
+        btn->setIconSize(QSize(btnIconSize, btnIconSize));
+        btn->setFixedHeight(btnHeight);
+        btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        btn->setStyleSheet(
+            "QPushButton { background-color: #2d2d2d; border: 1px solid #3d3d3d; border-radius: 6px; }"
+#ifndef Q_OS_ANDROID
+            "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
+            "QPushButton:pressed { background-color: #1e1e1e; border-color: #569cd6; }"
+#else
+            "QPushButton:pressed { background-color: #1e1e1e; }"
+#endif
+            "QPushButton:disabled { background-color: #252525; border-color: #303030; }");
+        btn->setFocusPolicy(Qt::NoFocus);
+        return btn;
+    };
+
+    m_extraBtn = makeIconBtn("");   // placeholder — no icon yet
+
+    m_muteBtn = makeIconBtn(":/icons/mute-off.png");
+#ifndef Q_OS_ANDROID
+    m_muteBtn->setToolTip("Mute");
+#endif
+    connect(m_muteBtn, &QPushButton::clicked, this, &MainWindow::onMuteToggled);
+
+    btnRowLayout->addWidget(m_extraBtn);
+    btnRowLayout->addWidget(m_muteBtn);
+    layout->addWidget(btnRowWidget);
+
     // Main PTT button at the bottom
     m_mainPttBtn = new QPushButton("PTT");
 #ifdef Q_OS_ANDROID
-    m_mainPttBtn->setFixedHeight(80);
+    m_mainPttBtn->setFixedHeight(100);
     m_mainPttBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 #else
     m_mainPttBtn->setMinimumHeight(60);
@@ -580,11 +674,14 @@ QWidget *MainWindow::createHotspotsPage()
     pttStyle +=
         "background-color: #2d2d2d; color: #d4d4d4; "
         "font-weight: bold; border: 2px solid #3d3d3d; border-radius: 8px; }"
+#ifndef Q_OS_ANDROID
         "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
+#endif
         "QPushButton:pressed { background-color: #b71c1c; border-color: #ef5350; color: #ffffff; }"
         "QPushButton:disabled { color: #555555; background-color: #252525; border-color: #303030; }";
 
     m_mainPttBtn->setStyleSheet(pttStyle);
+    m_mainPttBtn->setFocusPolicy(Qt::NoFocus);
 
     connect(m_mainPttBtn, &QPushButton::pressed, this, &MainWindow::onMainPttPressed);
     connect(m_mainPttBtn, &QPushButton::released, this, &MainWindow::onMainPttReleased);
@@ -882,6 +979,7 @@ QWidget *MainWindow::createSettingsPage()
         "QPushButton { background-color: #2e7d32; color: white; font-weight: bold; }"
         "QPushButton:hover { background-color: #388e3c; }"
         "QPushButton:pressed { background-color: #1b5e20; }");
+    saveBtn->setFocusPolicy(Qt::NoFocus);
     connect(saveBtn, &QPushButton::clicked, this, &MainWindow::saveSettings);
 
     auto *btnLayout = new QHBoxLayout();
@@ -1051,6 +1149,7 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
     row.txTgSpin->setRange(1, 999999);
     row.txTgSpin->setPrefix("TG ");
     row.txTgSpin->setValue(hs->txTalkgroup());
+    row.txTgSpin->setFocusPolicy(Qt::ClickFocus);
 #ifdef Q_OS_ANDROID
     row.txTgSpin->setMinimumWidth(90);
     row.txTgSpin->setFixedHeight(39);
@@ -1077,9 +1176,14 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 
     row.connectBtn->setStyleSheet(
         "QPushButton { background-color: #2d2d2d; border: 1px solid #3d3d3d; border-radius: 4px; }"
+#ifndef Q_OS_ANDROID
         "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
+        "QPushButton:pressed { background-color: #1f1f1f; border-color: #569cd6; }"
+#else
         "QPushButton:pressed { background-color: #1f1f1f; }"
+#endif
         );
+    row.connectBtn->setFocusPolicy(Qt::NoFocus);
 
     connect(row.connectBtn, &QPushButton::clicked, this, [this, index]() {
         onConnectClicked(index);
@@ -1099,10 +1203,13 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
     row.pttBtn->setStyleSheet(
         "QPushButton { background-color: #2d2d2d; color: #d4d4d4; font-weight: bold; "
         "padding: 0 8px; border: 1px solid #3d3d3d; border-radius: 4px; }"
+#ifndef Q_OS_ANDROID
         "QPushButton:hover { background-color: #3a3a3a; border-color: #569cd6; }"
+#endif
         "QPushButton:pressed { background-color: #b71c1c; border-color: #ef5350; color: #fff; }"
         "QPushButton:disabled { color: #555555; background-color: #252525; border-color: #303030; }"
         );
+    row.pttBtn->setFocusPolicy(Qt::NoFocus);
 
     connect(row.pttBtn, &QPushButton::pressed, this, [this, index]() {
         onHsPttPressed(index);
@@ -1162,6 +1269,31 @@ void MainWindow::onMainPttReleased()
 
     m_audio->stopCapture();
     m_manager->releasePtt(mainIdx);
+}
+
+void MainWindow::onMuteToggled()
+{
+    if (!m_isMuted) {
+        // Muting: save current volume, then set slider to 0
+        int cur = m_volumeSlider ? m_volumeSlider->value() : 100;
+        m_savedVolume = (cur > 0) ? cur : m_savedVolume;  // don't overwrite save with 0
+        if (m_volumeSlider)
+            m_volumeSlider->setValue(0);  // valueChanged will set m_isMuted=true and update icon
+        else {
+            m_isMuted = true;
+            if (m_audio) m_audio->setPlaybackVolume(0);
+            if (m_muteBtn) m_muteBtn->setIcon(QIcon(":/icons/mute-on.png"));
+        }
+    } else {
+        // Unmuting: restore saved volume via slider (valueChanged handles icon + audio)
+        if (m_volumeSlider)
+            m_volumeSlider->setValue(m_savedVolume);
+        else {
+            m_isMuted = false;
+            if (m_audio) m_audio->setPlaybackVolume(m_savedVolume);
+            if (m_muteBtn) m_muteBtn->setIcon(QIcon(":/icons/mute-off.png"));
+        }
+    }
 }
 
 void MainWindow::onHotspotStateChanged(int index)
