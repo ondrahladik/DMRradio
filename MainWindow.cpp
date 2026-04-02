@@ -304,37 +304,41 @@ QWidget *MainWindow::createHotspotsPage()
         if (i < m_manager->count() - 1) {
             auto *line = new QFrame();
             line->setFrameShape(QFrame::HLine);
-            line->setFrameShadow(QFrame::Sunken);
-            line->setObjectName("separator");
+            line->setFrameShadow(QFrame::Plain);
+            line->setFixedHeight(1);
+            line->setStyleSheet("QFrame { background-color: #141414; color: #141414; border: none; }");
             layout->addWidget(line);
         }
     }
 
 
 
-    // Caller / target panel (always visible, above PTT)
+    // Caller / target panel — 2×2 grid divided by a vertical and horizontal separator
     auto *panel = new QFrame();
     panel->setFrameShape(QFrame::StyledPanel);
     panel->setStyleSheet(
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
 
-    auto *panelLayout = new QGridLayout(panel);
-    panelLayout->setContentsMargins(8, 6, 8, 6);
-    panelLayout->setHorizontalSpacing(8);
-    panelLayout->setVerticalSpacing(4);
+    // Creates a cell widget: small label on top, larger value label below, both centered
+    auto makeCell = [](const QString &labelText, QLabel *&valueLabel,
+                       const QString &valueColor, int fontSize) -> QWidget * {
+        auto *cell = new QWidget();
+        cell->setStyleSheet("background: transparent; border: none;");
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(8, 6, 8, 6);
+        cellLayout->setSpacing(2);
+        cellLayout->setAlignment(Qt::AlignCenter);
 
-    auto addInfoRow = [panelLayout](int row, const QString &titleText, QLabel *&valueLabel,
-                                    const QString &valueColor, int fontSize) {
-        auto *title = new QLabel(titleText);
+        auto *title = new QLabel(labelText);
+        title->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
 #ifdef Q_OS_ANDROID
         title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 18pt; font-weight: bold; border: none; background: transparent; }");
 #else
         title->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
 #endif
-        panelLayout->addWidget(title, row, 0);
 
         valueLabel = new QLabel("");
-        valueLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        valueLabel->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
 #ifdef Q_OS_ANDROID
         const int androidFontSize = fontSize + 6;
         valueLabel->setStyleSheet(QString("QLabel { color: %1; font-size: %2pt; font-weight: bold; border: none; background: transparent; }")
@@ -345,36 +349,56 @@ QWidget *MainWindow::createHotspotsPage()
                                       .arg(valueColor).arg(fontSize));
         valueLabel->setMinimumHeight(22);
 #endif
-        panelLayout->addWidget(valueLabel, row, 1);
+
+        cellLayout->addWidget(title);
+        cellLayout->addWidget(valueLabel);
+        return cell;
     };
 
-    addInfoRow(0, "Callsign:", m_callerCallsignLabel, "#3fc3f7", 11);
-    addInfoRow(1, "Name:", m_callerNameLabel, "#3fc3f7", 10);
-    addInfoRow(2, "DMR ID:", m_callerLabel, "#3fc3f7", 12);
+    auto *outerLayout = new QHBoxLayout(panel);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
 
-    auto *targetTitle = new QLabel("Target:");
-#ifdef Q_OS_ANDROID
-    targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 18pt; font-weight: bold; border: none; background: transparent; }");
-#else
-    targetTitle->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
-#endif
-    panelLayout->addWidget(targetTitle, 3, 0);
+    // Left half: Callsign (top) and DMR ID (bottom)
+    auto *leftHalf = new QWidget();
+    leftHalf->setStyleSheet("background: transparent; border: none;");
+    auto *leftLayout = new QVBoxLayout(leftHalf);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(0);
+    leftLayout->addWidget(makeCell("Callsign", m_callerCallsignLabel, "#3fc3f7", 11));
+    auto *hLine1 = new QFrame();
+    hLine1->setFrameShape(QFrame::HLine);
+    hLine1->setFrameShadow(QFrame::Plain);
+    hLine1->setFixedHeight(1);
+    hLine1->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
+    leftLayout->addWidget(hLine1);
+    leftLayout->addWidget(makeCell("DMR ID", m_callerLabel, "#3fc3f7", 12));
 
-    m_targetLabel = new QLabel("");
-    m_targetLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-#ifdef Q_OS_ANDROID
-    m_targetLabel->setStyleSheet(
-        "QLabel { color: #3fc3f7; font-size: 16pt; font-weight: bold; border: none; background: transparent; }");
-    m_targetLabel->setMinimumHeight(30);
-#else
-    m_targetLabel->setStyleSheet(
-        "QLabel { color: #3fc3f7; font-size: 10pt; font-weight: bold; border: none; background: transparent; }");
-    m_targetLabel->setMinimumHeight(22);
-#endif
-    panelLayout->addWidget(m_targetLabel, 3, 1);
+    // Vertical divider spanning the full height of the panel
+    auto *vLine = new QFrame();
+    vLine->setFrameShape(QFrame::VLine);
+    vLine->setFrameShadow(QFrame::Plain);
+    vLine->setFixedWidth(1);
+    vLine->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
 
-    panelLayout->setColumnStretch(0, 0);
-    panelLayout->setColumnStretch(1, 1);
+    // Right half: Name (top) and Target (bottom)
+    auto *rightHalf = new QWidget();
+    rightHalf->setStyleSheet("background: transparent; border: none;");
+    auto *rightLayout = new QVBoxLayout(rightHalf);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->setSpacing(0);
+    rightLayout->addWidget(makeCell("Name", m_callerNameLabel, "#3fc3f7", 10));
+    auto *hLine2 = new QFrame();
+    hLine2->setFrameShape(QFrame::HLine);
+    hLine2->setFrameShadow(QFrame::Plain);
+    hLine2->setFixedHeight(1);
+    hLine2->setStyleSheet("QFrame { background-color: #252525; color: #252525; border: none; }");
+    rightLayout->addWidget(hLine2);
+    rightLayout->addWidget(makeCell("Target", m_targetLabel, "#3fc3f7", 10));
+
+    outerLayout->addWidget(leftHalf, 1);
+    outerLayout->addWidget(vLine);
+    outerLayout->addWidget(rightHalf, 1);
 
     layout->addWidget(panel);
 
