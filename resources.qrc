@@ -4,6 +4,8 @@
         <file>icons/connect.png</file>
         <file>icons/disconnect.png</file>
         <file>icons/abort.png</file>
+        <file>icons/mute-off.png</file>
+        <file>icons/mute-on.png</file>
         <file>config.json</file>
         <file>DMRIds.dat</file>
     </qresource>
