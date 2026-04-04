@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("DMR radio");
-    app.setApplicationVersion("1.0.3");
+    app.setApplicationVersion("1.0.4");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.setStyleSheet(APP_DARK_STYLE);
     app.installEventFilter(new ClickOutsideFilter(&app));

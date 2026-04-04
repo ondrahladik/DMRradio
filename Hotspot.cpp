@@ -171,8 +171,9 @@ void Hotspot::startTransmit()
     QByteArray headerPayload(33, '\0');
     sendPacket(buildDmrdPacket(headerPayload, true, false));
 
-    emit logMessage(QString("[%1] PTT ON — TX START TG %2 (stream 0x%3, src DMR ID %4)")
+    emit logMessage(QString("[%1] PTT ON — TX START %2 %3 (stream 0x%4, src DMR ID %5)")
                         .arg(m_config.name)
+                        .arg(m_privateCall ? "PRIVATE" : "GROUP TG")
                         .arg(txTalkgroup())
                         .arg(m_txStreamId, 8, 16, QChar('0'))
                         .arg(m_config.srcDmrId));
@@ -542,7 +543,9 @@ QByteArray Hotspot::buildDmrdPacket(const QByteArray &dmrPayload,
     //   Bit 6: Call type (0=Group, 1=Private)
     //   Bits 5-4: Frame type (00=Voice, 01=VoiceSync, 10=DataSync)
     //   Bits 3-0: Voice sequence (0-5) or data type
-    quint8 flags = 0x80;  // TS2, Group call
+    quint8 flags = 0x80;  // TS2, Group call by default
+    if (m_privateCall)
+        flags |= 0x40;    // Bit 6: Private call
 
     if (isHeader) {
         flags |= 0x20 | 0x01;  // DataSync + Voice LC Header

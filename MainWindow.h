@@ -50,6 +50,7 @@ private slots:
     void onMainPttPressed();
     void onMainPttReleased();
     void onMuteToggled();
+    void onCallTypeToggled();
     void onHotspotStateChanged(int index);
     void onPttChanged(int index, bool active);
     void onVoiceCallStarted(int index, quint32 srcId);
@@ -87,6 +88,7 @@ private:
     QPushButton *m_extraBtn = nullptr;
     QPushButton *m_muteBtn = nullptr;
     bool m_isMuted = false;
+    bool m_isPrivateCall = false;
     int  m_savedVolume = 100;
     QLabel *m_callerLabel = nullptr;
     QLabel *m_callerCallsignLabel = nullptr;
