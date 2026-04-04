@@ -55,6 +55,9 @@ public:
     int txTalkgroup() const;
     void setTxTalkgroup(int tg);
 
+    bool isPrivateCall() const { return m_privateCall; }
+    void setPrivateCall(bool priv) { m_privateCall = priv; }
+
     void sendAudioData(const QByteArray &pcm);
 
 public slots:
@@ -114,6 +117,7 @@ private:
     AmbeEncoder *m_encoder = nullptr;
     QByteArray m_txPcmBuffer;
     int m_txTalkgroup = 0;
+    bool m_privateCall = false;
     QString m_lastSentTag;
     int m_lastSentSize = 0;
 

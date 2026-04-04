@@ -6,6 +6,8 @@
         <file>icons/abort.png</file>
         <file>icons/mute-off.png</file>
         <file>icons/mute-on.png</file>
+        <file>icons/user.png</file>
+        <file>icons/users-group.png</file>
         <file>config.json</file>
         <file>DMRIds.dat</file>
     </qresource>

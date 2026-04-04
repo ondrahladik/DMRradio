@@ -641,7 +641,11 @@ QWidget *MainWindow::createHotspotsPage()
         return btn;
     };
 
-    m_extraBtn = makeIconBtn("");   // placeholder — no icon yet
+    m_extraBtn = makeIconBtn(":/icons/users-group.png");
+#ifndef Q_OS_ANDROID
+    m_extraBtn->setToolTip("Private call");
+#endif
+    connect(m_extraBtn, &QPushButton::clicked, this, &MainWindow::onCallTypeToggled);
 
     m_muteBtn = makeIconBtn(":/icons/mute-off.png");
 #ifndef Q_OS_ANDROID
@@ -718,7 +722,7 @@ QWidget *MainWindow::createAboutPage()
     aboutLayout->addWidget(title, 0, 0, 1, 2);
 
     const QString versionText = QCoreApplication::applicationVersion().isEmpty()
-        ? QStringLiteral("1.0.3")
+        ? QStringLiteral("1.0.4")
         : QCoreApplication::applicationVersion();
 
     auto addRow = [aboutLayout](int row, const QString &labelText, QLabel *valueLabel) {
@@ -1269,6 +1273,28 @@ void MainWindow::onMainPttReleased()
 
     m_audio->stopCapture();
     m_manager->releasePtt(mainIdx);
+}
+
+void MainWindow::onCallTypeToggled()
+{
+    m_isPrivateCall = !m_isPrivateCall;
+    for (int i = 0; i < m_manager->count(); ++i)
+        if (auto *hs = m_manager->hotspot(i))
+            hs->setPrivateCall(m_isPrivateCall);
+
+    if (m_extraBtn) {
+        if (m_isPrivateCall) {
+            m_extraBtn->setIcon(QIcon(":/icons/user.png"));
+#ifndef Q_OS_ANDROID
+            m_extraBtn->setToolTip("Group call");
+#endif
+        } else {
+            m_extraBtn->setIcon(QIcon(":/icons/users-group.png"));
+#ifndef Q_OS_ANDROID
+            m_extraBtn->setToolTip("Private call");
+#endif
+        }
+    }
 }
 
 void MainWindow::onMuteToggled()
