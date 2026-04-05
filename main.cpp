@@ -9,6 +9,7 @@
 #include <QGuiApplication>
 #include <QInputMethod>
 #include <QWidget>
+#include <QMessageBox>
 
 #include "ConfigManager.h"
 #include "HotspotManager.h"
@@ -136,10 +137,35 @@ int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
     app.setApplicationName("DMR radio");
-    app.setApplicationVersion("1.0.4");
+    app.setApplicationVersion("1.0.5");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
-    app.setStyleSheet(APP_DARK_STYLE);
     app.installEventFilter(new ClickOutsideFilter(&app));
+
+    // Locate config.json — only looks next to the executable.
+    // Check before applying the dark stylesheet so the error dialog
+    // uses the native system appearance.
+    const QString configPath = ConfigManager::resolveConfigPath();
+
+    ConfigManager config;
+    if (configPath.isEmpty() || !config.load(configPath)) {
+        QMessageBox mb;
+        mb.setIcon(QMessageBox::Warning);
+        mb.setWindowTitle("Error");
+        mb.setText("The config.json file was not found.");
+        mb.setStandardButtons(QMessageBox::Ok);
+        mb.setStyleSheet(
+            "QMessageBox { background-color: #2d2d2d; }"
+            "QMessageBox QWidget { background-color: #2d2d2d; }"
+            "QMessageBox QFrame { background-color: #2d2d2d; }"
+            "QMessageBox QLabel { color: #d4d4d4; background-color: transparent; }"
+            "QMessageBox QPushButton { min-width: 80px; background-color: #2d2d2d; color: #d4d4d4; "
+            "border: 1px solid #3d3d3d; padding: 6px 14px; border-radius: 4px; }"
+            "QMessageBox QPushButton:hover { background-color: #3a3a3a; border-color: #505050; }");
+        mb.exec();
+        return 1;
+    }
+
+    app.setStyleSheet(APP_DARK_STYLE);
 
 #ifdef Q_OS_ANDROID
     // Larger text on Android for readability on high-DPI touch screens
@@ -152,17 +178,6 @@ int main(int argc, char *argv[])
         QPlainTextEdit { font-size: 11pt; }
     )");
 #endif
-
-    // Locate config.json — resolves platform-specific path automatically.
-    // On Windows: next to exe, then AppData fallback.
-    // On Android: AppDataLocation (seeded from :/config.json on first run).
-    const QString configPath = ConfigManager::resolveConfigPath();
-
-    ConfigManager config;
-    if (!config.load(configPath)) {
-        qCritical() << "Failed to load config from:" << configPath;
-        return 1;
-    }
 
     HotspotManager manager;
     if (!manager.loadFromConfig(&config)) {

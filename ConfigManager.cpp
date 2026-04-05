@@ -2,49 +2,23 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
-#include <QFileDevice>
 #include <QJsonDocument>
 #include <QJsonParseError>
-#include <QStandardPaths>
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 
 QString ConfigManager::resolveConfigPath()
 {
     const QString fileName = QStringLiteral("config.json");
-    const QString resourcePath = QStringLiteral(":/config.json");
-
-#ifndef Q_OS_ANDROID
-    // On desktop platforms check for a config file next to the executable first.
     const QString exeConfig =
         QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
+
     if (QFile::exists(exeConfig))
         return exeConfig;
-#endif
 
-    // Writable per-user app data directory (works on Windows and Android).
-    const QString writableDir =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    const QString writableConfig = QDir(writableDir).filePath(fileName);
-
-    if (QFile::exists(writableConfig))
-        return writableConfig;
-
-    // Config not found on disk — seed it from the embedded resource so that
-    // the application (and subsequent saves) have a real writable file.
-    if (QFile::exists(resourcePath)) {
-        QDir().mkpath(writableDir);
-        if (QFile::copy(resourcePath, writableConfig)) {
-            // Qt copies resource files as read-only; make it writable.
-            QFile::setPermissions(writableConfig,
-                                  QFileDevice::ReadOwner | QFileDevice::WriteOwner |
-                                  QFileDevice::ReadGroup | QFileDevice::ReadOther);
-            return writableConfig;
-        }
-    }
-
-    // Last resort: read directly from the Qt resource (read-only, saves will fail).
-    return resourcePath;
+    // Config not found next to the executable — return empty string so the
+    // caller can show a proper error message.
+    return QString();
 }
 
 bool ConfigManager::load(const QString &path)
