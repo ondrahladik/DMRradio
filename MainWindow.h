@@ -74,6 +74,7 @@ private:
     void loadSettingsToUi();
     void loadDmrIds();
     void checkAndUpdateDmrIds();
+    void startDmrIdsDownload(const QString &url, const QString &savePath);
     static QString dmrIdsWritablePath();
 
     HotspotManager *m_manager = nullptr;
