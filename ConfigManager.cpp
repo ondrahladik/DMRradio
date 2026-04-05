@@ -4,21 +4,42 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QStandardPaths>
 
 // ── Path resolution ──────────────────────────────────────────────────────────
 
 QString ConfigManager::resolveConfigPath()
 {
     const QString fileName = QStringLiteral("config.json");
+
+#ifndef Q_OS_ANDROID
+    // Desktop: look next to the executable
     const QString exeConfig =
         QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
-
     if (QFile::exists(exeConfig))
         return exeConfig;
-
-    // Config not found next to the executable — return empty string so the
-    // caller can show a proper error message.
     return QString();
+#else
+    // Android: use writable AppData directory.
+    // If no config exists there yet, copy the default from embedded resources.
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    const QString writablePath = QDir(dir).filePath(fileName);
+
+    if (QFile::exists(writablePath))
+        return writablePath;
+
+    // First run — copy the bundled default config to writable storage
+    if (QFile::exists(QStringLiteral(":/config.json"))) {
+        QFile::copy(QStringLiteral(":/config.json"), writablePath);
+        // Resource copies are read-only; make writable so saves work
+        QFile::setPermissions(writablePath,
+            QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        return writablePath;
+    }
+
+    return QString();
+#endif
 }
 
 bool ConfigManager::load(const QString &path)

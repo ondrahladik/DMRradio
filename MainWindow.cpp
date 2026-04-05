@@ -120,8 +120,8 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     setMinimumWidth(340);
 #else
     setFixedWidth(340);
-    setFixedHeight(480);
-    resize(340, 480);
+    setFixedHeight(520);
+    resize(340, 520);
 #endif
     buildUi();
     loadDmrIds();
@@ -401,8 +401,8 @@ QWidget *MainWindow::createHotspotsPage()
     grid->setSpacing(0);
     grid->setColumnStretch(0, 1);
     grid->setColumnStretch(2, 1);
-    grid->setRowStretch(0, 1);
-    grid->setRowStretch(2, 1);
+    grid->setRowStretch(0, 2);
+    grid->setRowStretch(2, 2);
 
     grid->addWidget(makeCell("Callsign", m_callerCallsignLabel, "#3fc3f7", 11), 0, 0);
     grid->addWidget(makeCell("Name",     m_callerNameLabel,     "#3fc3f7", 10), 0, 2);
@@ -417,7 +417,7 @@ QWidget *MainWindow::createHotspotsPage()
     hLine->setStyleSheet(divStyle);
     grid->addWidget(hLine, 1, 0, 1, 3);
 
-    grid->addWidget(makeCell("DMR ID", m_callerLabel,  "#3fc3f7", 12), 2, 0);
+    grid->addWidget(makeCell("Source", m_callerLabel,  "#3fc3f7", 12), 2, 0);
     grid->addWidget(makeCell("Target", m_targetLabel,  "#3fc3f7", 10), 2, 2);
 
     // Vertical divider in col 1 — spans all 3 rows
@@ -431,7 +431,7 @@ QWidget *MainWindow::createHotspotsPage()
 #ifdef Q_OS_ANDROID
     layout->addWidget(panel, 1);  // stretch to fill available space
 #else
-    layout->addWidget(panel);
+    layout->addWidget(panel, 1);  // stretch to use extra height for caller info
 #endif
 
     // Audio level bargraph — full width, above volume control
@@ -1150,15 +1150,14 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 
     // TX TG
     row.txTgSpin = new QSpinBox();
-    row.txTgSpin->setRange(1, 999999);
-    row.txTgSpin->setPrefix("TG ");
+    row.txTgSpin->setRange(1, 99999999);
     row.txTgSpin->setValue(hs->txTalkgroup());
     row.txTgSpin->setFocusPolicy(Qt::ClickFocus);
 #ifdef Q_OS_ANDROID
-    row.txTgSpin->setMinimumWidth(90);
+    row.txTgSpin->setMinimumWidth(55);
     row.txTgSpin->setFixedHeight(39);
 #else
-    row.txTgSpin->setMinimumWidth(65);
+    row.txTgSpin->setMinimumWidth(48);
     row.txTgSpin->setFixedHeight(28);
 #endif
 
