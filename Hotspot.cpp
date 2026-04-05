@@ -275,8 +275,11 @@ void Hotspot::onReadyRead()
         return;
 
     while (m_socket->hasPendingDatagrams()) {
+        qint64 dgSize = m_socket->pendingDatagramSize();
+        if (dgSize <= 0)
+            break;
         QByteArray datagram;
-        datagram.resize(m_socket->pendingDatagramSize());
+        datagram.resize(dgSize);
         QHostAddress sender;
         quint16 senderPort;
         m_socket->readDatagram(datagram.data(), datagram.size(), &sender, &senderPort);
@@ -380,6 +383,11 @@ void Hotspot::processDatagram(const QByteArray &data)
         quint32 dstId = (static_cast<quint8>(data[8]) << 16) |
                         (static_cast<quint8>(data[9]) <<  8) |
                          static_cast<quint8>(data[10]);
+
+        // Ignore echoed packets from our own transmission
+        if (srcId == m_config.srcDmrId)
+            return;
+
         quint8  flags = static_cast<quint8>(data[15]);
         int     slot  = (flags & 0x80) ? 2 : 1;
         bool    group = !(flags & 0x40);

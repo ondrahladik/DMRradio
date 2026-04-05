@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#ifdef Q_OS_ANDROID
+#include <QPermissions>
+#include <QCoreApplication>
+#endif
 
 static constexpr int DRAIN_INTERVAL_MS    = 10;
 static constexpr int MIC_POLL_INTERVAL_MS = 20;
@@ -139,6 +143,26 @@ void AudioEngine::startCapture()
     if (!m_initialized || m_capturing)
         return;
 
+#ifdef Q_OS_ANDROID
+    // Android requires runtime RECORD_AUDIO permission (API 23+)
+    QMicrophonePermission micPerm;
+    switch (qApp->checkPermission(micPerm)) {
+    case Qt::PermissionStatus::Undetermined:
+        qApp->requestPermission(micPerm, this, [this](const QPermission &perm) {
+            if (perm.status() == Qt::PermissionStatus::Granted)
+                startCapture();
+            else
+                emit logMessage("AudioEngine: Microphone permission denied by user");
+        });
+        return;
+    case Qt::PermissionStatus::Denied:
+        emit logMessage("AudioEngine: Microphone permission denied — enable in system settings");
+        return;
+    case Qt::PermissionStatus::Granted:
+        break;
+    }
+#endif
+
     if (m_audioSource) {
         m_audioSource->stop();
         delete m_audioSource;
@@ -210,7 +234,7 @@ void AudioEngine::stopCapture()
 
 void AudioEngine::playPCM(const QByteArray &pcm)
 {
-    if (!m_initialized || !m_speakerDevice)
+    if (!m_initialized || !m_speakerDevice || m_capturing)
         return;
     m_playbackBuffer.append(pcm);
 
