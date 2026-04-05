@@ -65,6 +65,7 @@ private:
     QIODevice *m_micDevice = nullptr;
     QTimer *m_micPollTimer = nullptr;
     bool m_capturing = false;
+    bool m_pttPending = false;  // PTT pressed while permission dialog was open
     int m_micDebugCounter = 0;
 
     QAudioSink *m_audioSink = nullptr;

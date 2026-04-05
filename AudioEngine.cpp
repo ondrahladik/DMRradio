@@ -92,6 +92,11 @@ bool AudioEngine::setupOutputSink()
     m_audioSink = newSink;
     m_speakerDevice = newSpeaker;
     m_audioSink->setVolume(std::clamp(m_playbackVolume, 0, 100) / 100.0);
+
+    // Start suspended — will resume when audio actually arrives.
+    // Prevents Android AudioTrack "mute" spam when idle.
+    m_audioSink->suspend();
+
     emit logMessage(QString("AudioEngine: Output device: %1").arg(outputDevice.description()));
     return true;
 }
@@ -148,11 +153,17 @@ void AudioEngine::startCapture()
     QMicrophonePermission micPerm;
     switch (qApp->checkPermission(micPerm)) {
     case Qt::PermissionStatus::Undetermined:
+        m_pttPending = true;  // remember that PTT was pressed
         qApp->requestPermission(micPerm, this, [this](const QPermission &perm) {
-            if (perm.status() == Qt::PermissionStatus::Granted)
-                startCapture();
-            else
+            if (perm.status() == Qt::PermissionStatus::Granted) {
+                if (m_pttPending) {
+                    m_pttPending = false;
+                    startCapture();  // PTT was still "logically" held — start now
+                }
+            } else {
+                m_pttPending = false;
                 emit logMessage("AudioEngine: Microphone permission denied by user");
+            }
         });
         return;
     case Qt::PermissionStatus::Denied:
@@ -216,6 +227,8 @@ void AudioEngine::startCapture()
 
 void AudioEngine::stopCapture()
 {
+    m_pttPending = false;  // cancel any pending PTT waiting for permission
+
     if (!m_capturing)
         return;
 
@@ -236,6 +249,11 @@ void AudioEngine::playPCM(const QByteArray &pcm)
 {
     if (!m_initialized || !m_speakerDevice || m_capturing)
         return;
+
+    // Resume audio output if it was suspended (idle state)
+    if (m_audioSink && m_audioSink->state() == QAudio::SuspendedState)
+        m_audioSink->resume();
+
     m_playbackBuffer.append(pcm);
 
     // Emit RMS level for the VU bargraph (RX — incoming audio)
@@ -255,6 +273,8 @@ void AudioEngine::resetPlayback()
 {
     m_playbackBuffer.clear();
     m_bufferPrimed = false;
+    if (m_audioSink && m_audioSink->state() == QAudio::ActiveState)
+        m_audioSink->suspend();
 }
 
 void AudioEngine::setPlaybackVolume(int percent)
@@ -278,6 +298,13 @@ void AudioEngine::drainPlaybackBuffer()
     qint64 written = m_speakerDevice->write(m_playbackBuffer);
     if (written > 0)
         m_playbackBuffer.remove(0, static_cast<int>(written));
+
+    // Suspend output when buffer is fully drained to avoid idle AudioTrack
+    if (m_playbackBuffer.isEmpty() && m_audioSink
+        && m_audioSink->state() == QAudio::ActiveState) {
+        m_audioSink->suspend();
+        m_bufferPrimed = false;
+    }
 }
 
 // Resample raw captured audio to 8 kHz mono 16-bit with anti-aliasing.

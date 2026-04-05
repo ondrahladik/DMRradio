@@ -1529,6 +1529,11 @@ void MainWindow::loadDmrIds()
 
 void MainWindow::checkAndUpdateDmrIds()
 {
+#ifdef Q_OS_ANDROID
+    // Android has no TLS backend and the server forces HTTPS via redirect,
+    // so network download is impossible. Use the embedded resource instead.
+    return;
+#endif
     const QString path = dmrIdsWritablePath();
     const QFileInfo fi(path);
 
@@ -1540,13 +1545,17 @@ void MainWindow::checkAndUpdateDmrIds()
     }
 
     addLog("DMRIds.dat is outdated or missing — downloading update...");
+    startDmrIdsDownload(QStringLiteral("https://odska.cz/DMRIds.dat"), path);
+}
 
+void MainWindow::startDmrIdsDownload(const QString &url, const QString &savePath)
+{
     auto *nam = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl("https://odska.cz/DMRIds.dat"));
+    QNetworkRequest req{QUrl(url)};
     req.setTransferTimeout(30000);
     QNetworkReply *reply = nam->get(req);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, path, nam]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, nam]() {
         reply->deleteLater();
         nam->deleteLater();
 
@@ -1562,23 +1571,23 @@ void MainWindow::checkAndUpdateDmrIds()
         }
 
         // Ensure directory exists (important on Android)
-        QDir().mkpath(QFileInfo(path).absolutePath());
+        QDir().mkpath(QFileInfo(savePath).absolutePath());
 
-        QFile file(path);
+        QFile file(savePath);
         if (!file.open(QIODevice::WriteOnly)) {
-            addLog("DMRIds.dat: cannot write to " + path);
+            addLog("DMRIds.dat: cannot write to " + savePath);
             return;
         }
         file.write(data);
         file.close();
 
         // Reload lookup with fresh data
-        m_dmrLookup = loadDmrLookup(path);
+        m_dmrLookup = loadDmrLookup(savePath);
         addLog(QString("DMRIds.dat updated: %1 entries").arg(m_dmrLookup.size()));
 
         // Update About page date label
         if (m_dmrIdsDateLabel) {
-            QFileInfo fiNew(path);
+            QFileInfo fiNew(savePath);
             m_dmrIdsDateLabel->setText(fiNew.lastModified().toString("yyyy-MM-dd"));
         }
     });
