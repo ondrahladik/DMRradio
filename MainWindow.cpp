@@ -722,7 +722,7 @@ QWidget *MainWindow::createAboutPage()
     aboutLayout->addWidget(title, 0, 0, 1, 2);
 
     const QString versionText = QCoreApplication::applicationVersion().isEmpty()
-        ? QStringLiteral("1.0.4")
+        ? QStringLiteral("1.0.5")
         : QCoreApplication::applicationVersion();
 
     auto addRow = [aboutLayout](int row, const QString &labelText, QLabel *valueLabel) {
