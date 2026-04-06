@@ -53,6 +53,8 @@ set_target_properties(DMRradio PROPERTIES
 if(ANDROID)
     set_target_properties(DMRradio PROPERTIES
         QT_ANDROID_PACKAGE_NAME "cz.dmrradio"
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+        QT_ANDROID_APP_ICON "@mipmap/ic_launcher"
     )
 endif()
 
