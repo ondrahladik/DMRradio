@@ -34,6 +34,8 @@ public:
     void resetPlayback();
     void setPlaybackVolume(int percent);
     int playbackVolume() const { return m_playbackVolume; }
+    void setMicGain(int percent);
+    int micGain() const { return m_micGain; }
 
     QAudioFormat format() const { return m_format; }
 
@@ -72,9 +74,11 @@ private:
     QIODevice *m_speakerDevice = nullptr;
     QTimer *m_drainTimer = nullptr;
     QByteArray m_playbackBuffer;
+    QByteArray applyMicGain(const QByteArray &pcm) const;
     bool m_initialized = false;
     bool m_bufferPrimed = false;
     int m_playbackVolume = 100;
+    int m_micGain = 50;
     static constexpr int JITTER_BUFFER_BYTES = 2880;
 };
 
