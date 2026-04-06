@@ -1,3 +1,4 @@
+#include <QApplication>
 #include "MainWindow.h"
 #include "HotspotManager.h"
 #include "AudioEngine.h"
@@ -32,6 +33,7 @@
 #include <QSlider>
 #include <QStyleOptionSlider>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #ifdef Q_OS_ANDROID
 #include <QScroller>
 #endif
@@ -62,6 +64,22 @@ protected:
 };
 
 namespace {
+
+bool shouldIgnoreSpaceForWidget(QWidget *widget)
+{
+    for (QWidget *w = widget; w; w = w->parentWidget()) {
+        if (qobject_cast<QLineEdit *>(w) ||
+            qobject_cast<QAbstractSpinBox *>(w) ||
+            qobject_cast<QPlainTextEdit *>(w) ||
+            qobject_cast<QComboBox *>(w) ||
+            qobject_cast<QCheckBox *>(w) ||
+            qobject_cast<QRadioButton *>(w) ||
+            qobject_cast<QPushButton *>(w)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 QHash<quint32, QPair<QString, QString>> loadDmrLookup(const QString &filePath)
 {
@@ -126,6 +144,7 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     buildUi();
     loadDmrIds();
     checkAndUpdateDmrIds();
+    qApp->installEventFilter(this);
 
     // Wire manager signals
     connect(m_manager, &HotspotManager::logMessage, this, &MainWindow::addLog);
@@ -155,7 +174,48 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
 
 MainWindow::~MainWindow()
 {
+    if (qApp)
+        qApp->removeEventFilter(this);
     delete m_decoder;
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (event->type() == QEvent::ApplicationDeactivate || event->type() == QEvent::WindowDeactivate) {
+        if (m_mainPttKeyDown) {
+            m_mainPttKeyDown = false;
+            onMainPttReleased();
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
+        const auto *keyEvent = static_cast<QKeyEvent *>(event);
+        const bool isSpace = keyEvent->key() == Qt::Key_Space && keyEvent->modifiers() == Qt::NoModifier;
+
+        if (event->type() == QEvent::KeyPress && isSpace && !keyEvent->isAutoRepeat()) {
+            auto *watchedWidget = qobject_cast<QWidget *>(watched);
+            if (m_mainPttBtn && m_mainPttBtn->isEnabled() && watchedWidget
+                && watchedWidget->window() == this
+                && !shouldIgnoreSpaceForWidget(watchedWidget)) {
+                if (!m_mainPttKeyDown) {
+                    m_mainPttKeyDown = true;
+                    onMainPttPressed();
+                }
+                return true;
+            }
+        }
+
+        if (event->type() == QEvent::KeyRelease && isSpace && !keyEvent->isAutoRepeat()) {
+            if (m_mainPttKeyDown) {
+                m_mainPttKeyDown = false;
+                onMainPttReleased();
+                return true;
+            }
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::wireHotspotConnections()
@@ -664,6 +724,7 @@ QWidget *MainWindow::createHotspotsPage()
     m_mainPttBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 #else
     m_mainPttBtn->setMinimumHeight(60);
+    m_mainPttBtn->setToolTip("Hold Space to talk");
 #endif
     m_mainPttBtn->setEnabled(false);
 
@@ -1258,15 +1319,27 @@ void MainWindow::onHsPttReleased(int index)
 
 void MainWindow::onMainPttPressed()
 {
+    if (m_mainPttBtn)
+        m_mainPttBtn->setDown(true);
+
     int mainIdx = m_manager->mainHotspotIndex();
-    if (mainIdx < 0) return;
+    if (mainIdx < 0) {
+        if (m_mainPttBtn)
+            m_mainPttBtn->setDown(false);
+        return;
+    }
 
     if (m_manager->requestPtt(mainIdx))
         m_audio->startCapture();
+    else if (m_mainPttBtn)
+        m_mainPttBtn->setDown(false);
 }
 
 void MainWindow::onMainPttReleased()
 {
+    if (m_mainPttBtn)
+        m_mainPttBtn->setDown(false);
+
     int mainIdx = m_manager->mainHotspotIndex();
     if (mainIdx < 0) return;
 
@@ -1331,6 +1404,8 @@ void MainWindow::onPttChanged(int /*index*/, bool active)
 {
     if (m_mainPttBtn)
         m_mainPttBtn->setProperty("txActive", active);
+    if (m_mainPttBtn)
+        m_mainPttBtn->setDown(active);
     updateMainPttState();
 }
 
