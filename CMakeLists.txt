@@ -50,6 +50,12 @@ set_target_properties(DMRradio PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
+if(ANDROID)
+    set_target_properties(DMRradio PROPERTIES
+        QT_ANDROID_PACKAGE_NAME "cz.dmrradio"
+    )
+endif()
+
 target_link_libraries(DMRradio PRIVATE
     Qt6::Widgets
     Qt6::Network
