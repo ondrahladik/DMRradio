@@ -32,6 +32,7 @@
 #include <QAudioDevice>
 #include <QSlider>
 #include <QStyleOptionSlider>
+#include <QPixmap>
 #include <QMouseEvent>
 #include <QKeyEvent>
 #ifdef Q_OS_ANDROID
@@ -192,6 +193,35 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         const auto *keyEvent = static_cast<QKeyEvent *>(event);
         const bool isSpace = keyEvent->key() == Qt::Key_Space && keyEvent->modifiers() == Qt::NoModifier;
+
+#ifdef Q_OS_ANDROID
+        const bool isVolumeUp = keyEvent->key() == Qt::Key_VolumeUp && keyEvent->modifiers() == Qt::NoModifier;
+        const bool isVolumeDown = keyEvent->key() == Qt::Key_VolumeDown && keyEvent->modifiers() == Qt::NoModifier;
+
+        if (isVolumeDown)
+            return true;
+
+        if (event->type() == QEvent::KeyPress && isVolumeUp && !keyEvent->isAutoRepeat()) {
+            auto *watchedWidget = qobject_cast<QWidget *>(watched);
+            if (m_mainPttBtn && m_mainPttBtn->isEnabled() && watchedWidget
+                && watchedWidget->window() == this
+                && !shouldIgnoreSpaceForWidget(watchedWidget)) {
+                if (!m_mainPttKeyDown) {
+                    m_mainPttKeyDown = true;
+                    onMainPttPressed();
+                }
+                return true;
+            }
+        }
+
+        if (event->type() == QEvent::KeyRelease && isVolumeUp && !keyEvent->isAutoRepeat()) {
+            if (m_mainPttKeyDown) {
+                m_mainPttKeyDown = false;
+                onMainPttReleased();
+                return true;
+            }
+        }
+#endif
 
         if (event->type() == QEvent::KeyPress && isSpace && !keyEvent->isAutoRepeat()) {
             auto *watchedWidget = qobject_cast<QWidget *>(watched);
@@ -831,6 +861,12 @@ QWidget *MainWindow::createAboutPage()
     aboutLayout->setColumnStretch(0, 0);
     aboutLayout->setColumnStretch(1, 1);
     layout->addWidget(aboutCard);
+
+    auto *logo = new QLabel();
+    logo->setPixmap(QPixmap(":/icons/logo.png").scaledToWidth(160, Qt::SmoothTransformation));
+    logo->setAlignment(Qt::AlignHCenter);
+    layout->addSpacing(8);
+    layout->addWidget(logo, 0, Qt::AlignHCenter);
 
     layout->addStretch();
     return page;

@@ -135,6 +135,10 @@ protected:
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_ANDROID
+    // Forward hardware volume keys to Qt so the app can use them for PTT.
+    qputenv("QT_ANDROID_VOLUME_KEYS", "1");
+#endif
     QApplication app(argc, argv);
     app.setApplicationName("DMR radio");
     app.setApplicationVersion("1.0.5");
