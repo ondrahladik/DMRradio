@@ -18,6 +18,7 @@
 
 #include "AudioLevelBar.h"
 
+class QEvent;
 class HotspotManager;
 class AudioEngine;
 class Hotspot;
@@ -42,6 +43,9 @@ public:
     explicit MainWindow(HotspotManager *manager, AudioEngine *audio,
                         ConfigManager *config, QWidget *parent = nullptr);
     ~MainWindow() override;
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void onConnectClicked(int index);
@@ -86,6 +90,7 @@ private:
     QStackedWidget *m_stack = nullptr;
     QPlainTextEdit *m_logView = nullptr;
     QPushButton *m_mainPttBtn = nullptr;
+    bool m_mainPttKeyDown = false;
     QPushButton *m_extraBtn = nullptr;
     QPushButton *m_muteBtn = nullptr;
     bool m_isMuted = false;
