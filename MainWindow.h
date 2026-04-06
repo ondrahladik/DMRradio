@@ -102,6 +102,8 @@ private:
     QLabel *m_targetLabel = nullptr;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_volumeValueLabel = nullptr;
+    QSlider *m_micGainSlider = nullptr;
+    QLabel *m_micGainValueLabel = nullptr;
     AudioLevelBar *m_audioLevelBar = nullptr;
 
     // Caller info display state

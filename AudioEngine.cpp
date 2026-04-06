@@ -13,6 +13,7 @@
 static constexpr int DRAIN_INTERVAL_MS    = 10;
 static constexpr int MIC_POLL_INTERVAL_MS = 20;
 static constexpr int TARGET_RATE          = 8000;
+static constexpr float MIC_GAIN_MAX_SCALE = 0.75f;
 
 AudioEngine::AudioEngine(QObject *parent)
     : QObject(parent)
@@ -284,6 +285,29 @@ void AudioEngine::setPlaybackVolume(int percent)
         m_audioSink->setVolume(m_playbackVolume / 100.0);
 }
 
+void AudioEngine::setMicGain(int percent)
+{
+    m_micGain = std::clamp(percent, 0, 100);
+}
+
+QByteArray AudioEngine::applyMicGain(const QByteArray &pcm) const
+{
+    if (pcm.isEmpty())
+        return pcm;
+
+    QByteArray out(pcm);
+    auto *samples = reinterpret_cast<int16_t *>(out.data());
+    const int count = out.size() / static_cast<int>(sizeof(int16_t));
+    const float gain = static_cast<float>(m_micGain) / 100.0f * MIC_GAIN_MAX_SCALE;
+
+    for (int i = 0; i < count; ++i) {
+        const float scaled = static_cast<float>(samples[i]) * gain;
+        samples[i] = static_cast<int16_t>(std::clamp(scaled, -32768.0f, 32767.0f));
+    }
+
+    return out;
+}
+
 void AudioEngine::drainPlaybackBuffer()
 {
     if (m_playbackBuffer.isEmpty() || !m_speakerDevice)
@@ -381,6 +405,8 @@ void AudioEngine::onMicPollTimer()
 
     // No external preprocessing — the IMBE encoder has its own DC removal
     // and gain handling. Passing raw PCM preserves maximum signal quality.
+
+    pcm = applyMicGain(pcm);
 
     // Debug log every ~500ms
     m_micDebugCounter++;

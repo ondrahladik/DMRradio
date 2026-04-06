@@ -565,112 +565,136 @@ QWidget *MainWindow::createHotspotsPage()
 
     layout->addWidget(levelFrame);
 
-    // Full-width playback volume control
+    // Full-width volume controls
     auto *volumeFrame = new QFrame();
     volumeFrame->setFrameShape(QFrame::StyledPanel);
     volumeFrame->setStyleSheet(
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
-#ifdef Q_OS_ANDROID
-    volumeFrame->setFixedHeight(60);
-#endif
 
-    auto *volumeLayout = new QHBoxLayout(volumeFrame);
+    auto *volumeLayout = new QVBoxLayout(volumeFrame);
 #ifdef Q_OS_ANDROID
     volumeLayout->setContentsMargins(8, 2, 8, 2);
-    volumeLayout->setSpacing(6);
+    volumeLayout->setSpacing(4);
 #else
     volumeLayout->setContentsMargins(10, 8, 10, 8);
-    volumeLayout->setSpacing(8);
+    volumeLayout->setSpacing(6);
 #endif
 
-    auto *volumeLabel = new QLabel("Volume");
-
-    #ifdef Q_OS_ANDROID
-        volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
-    #else
-        volumeLabel->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
-    #endif
-
-    volumeLabel->setMinimumWidth(44);
-
-    m_volumeSlider = new TouchSlider(Qt::Horizontal);
-    m_volumeSlider->setRange(0, 100);
-    m_volumeSlider->setSingleStep(1);
-    m_volumeSlider->setPageStep(10);
-    m_volumeSlider->setTickInterval(10);
-    m_volumeSlider->setTickPosition(QSlider::NoTicks);
-    m_volumeSlider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto setupSlider = [](QSlider *slider) {
+        slider->setRange(0, 100);
+        slider->setSingleStep(1);
+        slider->setPageStep(10);
+        slider->setTickInterval(10);
+        slider->setTickPosition(QSlider::NoTicks);
+        slider->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 #ifdef Q_OS_ANDROID
-    m_volumeSlider->setMinimumHeight(44);
-    m_volumeSlider->setStyleSheet(
-        "QSlider::groove:horizontal {"
-        "  height: 12px;"
-        "  background: #2b2b2b;"
-        "  border: 1px solid #3d3d3d;"
-        "  border-radius: 6px;"
-        "}"
-        "QSlider::sub-page:horizontal {"
-        "  background: #569cd6;"
-        "  border: 1px solid #569cd6;"
-        "  border-radius: 6px;"
-        "}"
-        "QSlider::add-page:horizontal {"
-        "  background: #2b2b2b;"
-        "  border: 1px solid #3d3d3d;"
-        "  border-radius: 6px;"
-        "}"
-        "QSlider::handle:horizontal {"
-        "  background: #d4d4d4;"
-        "  border: 1px solid #5a5a5a;"
-        "  width: 32px;"
-        "  height: 32px;"
-        "  margin: -10px 0;"
-        "  border-radius: 16px;"
-        "}"
-        "QSlider::handle:horizontal:hover {"
-        "  background: #ffffff;"
-        "  border-color: #569cd6;"
-        "}");
+        slider->setMinimumHeight(44);
+        slider->setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "  height: 12px;"
+            "  background: #2b2b2b;"
+            "  border: 1px solid #3d3d3d;"
+            "  border-radius: 6px;"
+            "}"
+            "QSlider::sub-page:horizontal {"
+            "  background: #569cd6;"
+            "  border: 1px solid #569cd6;"
+            "  border-radius: 6px;"
+            "}"
+            "QSlider::add-page:horizontal {"
+            "  background: #2b2b2b;"
+            "  border: 1px solid #3d3d3d;"
+            "  border-radius: 6px;"
+            "}"
+            "QSlider::handle:horizontal {"
+            "  background: #d4d4d4;"
+            "  border: 1px solid #5a5a5a;"
+            "  width: 32px;"
+            "  height: 32px;"
+            "  margin: -10px 0;"
+            "  border-radius: 16px;"
+            "}"
+            "QSlider::handle:horizontal:hover {"
+            "  background: #ffffff;"
+            "  border-color: #569cd6;"
+            "}");
 #else
-    m_volumeSlider->setMinimumHeight(24);
-    m_volumeSlider->setStyleSheet(
-        "QSlider::groove:horizontal {"
-        "  height: 6px;"
-        "  background: #2b2b2b;"
-        "  border: 1px solid #3d3d3d;"
-        "  border-radius: 3px;"
-        "}"
-        "QSlider::sub-page:horizontal {"
-        "  background: #569cd6;"
-        "  border: 1px solid #569cd6;"
-        "  border-radius: 3px;"
-        "}"
-        "QSlider::add-page:horizontal {"
-        "  background: #2b2b2b;"
-        "  border: 1px solid #3d3d3d;"
-        "  border-radius: 3px;"
-        "}"
-        "QSlider::handle:horizontal {"
-        "  background: #d4d4d4;"
-        "  border: 1px solid #5a5a5a;"
-        "  width: 16px;"
-        "  margin: -6px 0;"
-        "  border-radius: 8px;"
-        "}"
-        "QSlider::handle:horizontal:hover {"
-        "  background: #ffffff;"
-        "  border-color: #569cd6;"
-        "}");
+        slider->setMinimumHeight(24);
+        slider->setStyleSheet(
+            "QSlider::groove:horizontal {"
+            "  height: 6px;"
+            "  background: #2b2b2b;"
+            "  border: 1px solid #3d3d3d;"
+            "  border-radius: 3px;"
+            "}"
+            "QSlider::sub-page:horizontal {"
+            "  background: #569cd6;"
+            "  border: 1px solid #569cd6;"
+            "  border-radius: 3px;"
+            "}"
+            "QSlider::add-page:horizontal {"
+            "  background: #2b2b2b;"
+            "  border: 1px solid #3d3d3d;"
+            "  border-radius: 3px;"
+            "}"
+            "QSlider::handle:horizontal {"
+            "  background: #d4d4d4;"
+            "  border: 1px solid #5a5a5a;"
+            "  width: 16px;"
+            "  margin: -6px 0;"
+            "  border-radius: 8px;"
+            "}"
+            "QSlider::handle:horizontal:hover {"
+            "  background: #ffffff;"
+            "  border-color: #569cd6;"
+            "}");
+#endif
+    };
+
+    auto createRow = [&](const QString &labelText, QSlider *&slider, QLabel *&valueLabel) {
+        auto *row = new QWidget();
+        row->setStyleSheet("QWidget { background: transparent; }");
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(8);
+
+        auto *label = new QLabel(labelText);
+#ifdef Q_OS_ANDROID
+        label->setStyleSheet("QLabel { color: #9e9e9e; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
+#else
+        label->setStyleSheet("QLabel { color: #9e9e9e; font-size: 8pt; font-weight: bold; border: none; background: transparent; }");
+#endif
+        label->setMinimumWidth(44);
+
+        slider = new TouchSlider(Qt::Horizontal);
+        setupSlider(slider);
+
+        valueLabel = new QLabel("100%");
+        valueLabel->setMinimumWidth(40);
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+#ifdef Q_OS_ANDROID
+        valueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
+#else
+        valueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; border: none; background: transparent; }");
 #endif
 
-    m_volumeValueLabel = new QLabel("100%");
-    m_volumeValueLabel->setMinimumWidth(40);
-    m_volumeValueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    #ifdef Q_OS_ANDROID
-        m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 12pt; font-weight: bold; border: none; background: transparent; }");
-    #else
-        m_volumeValueLabel->setStyleSheet("QLabel { color: #3fc3f7; font-size: 9pt; font-weight: bold; border: none; background: transparent; }");
-    #endif
+        rowLayout->addWidget(label);
+        rowLayout->addWidget(slider, 1);
+        rowLayout->addWidget(valueLabel);
+        return row;
+    };
+
+    auto *micRow = createRow("Mic", m_micGainSlider, m_micGainValueLabel);
+    volumeLayout->addWidget(micRow);
+
+    auto *volumeRow = createRow("Vol", m_volumeSlider, m_volumeValueLabel);
+
+    connect(m_micGainSlider, &QSlider::valueChanged, this, [this](int value) {
+        if (m_micGainValueLabel)
+            m_micGainValueLabel->setText(QString::number(value) + "%");
+        if (m_audio)
+            m_audio->setMicGain(value);
+    });
 
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_volumeValueLabel)
@@ -690,11 +714,15 @@ QWidget *MainWindow::createHotspotsPage()
             m_audio->setPlaybackVolume(value);
     });
 
-    m_volumeSlider->setValue(m_audio ? m_audio->playbackVolume() : 100);
+    if (m_audio) {
+        m_micGainSlider->setValue(m_audio->micGain());
+        m_volumeSlider->setValue(m_audio->playbackVolume());
+    } else {
+        m_micGainSlider->setValue(50);
+        m_volumeSlider->setValue(100);
+    }
 
-    volumeLayout->addWidget(volumeLabel);
-    volumeLayout->addWidget(m_volumeSlider, 1);
-    volumeLayout->addWidget(m_volumeValueLabel);
+    volumeLayout->addWidget(volumeRow);
 
     layout->addWidget(volumeFrame);
 
