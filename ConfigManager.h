@@ -31,6 +31,8 @@ public:
     quint32 dmrId() const;
     QString inputDevice() const;
     QString outputDevice() const;
+    int micGain() const;
+    int volume() const;
 
     void setHost(const QString &v);
     void setPort(quint16 v);
@@ -39,6 +41,8 @@ public:
     void setDmrId(quint32 v);
     void setInputDevice(const QString &v);
     void setOutputDevice(const QString &v);
+    void setMicGain(int v);
+    void setVolume(int v);
 
     // Hotspot access
     int hotspotCount() const;

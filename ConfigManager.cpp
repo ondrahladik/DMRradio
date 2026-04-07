@@ -87,6 +87,8 @@ QString ConfigManager::callsign() const  { return m_root["callsign"].toString();
 quint32 ConfigManager::dmrId() const     { return static_cast<quint32>(m_root["dmrId"].toDouble(0)); }
 QString ConfigManager::inputDevice() const { return m_root["input_device"].toString(); }
 QString ConfigManager::outputDevice() const { return m_root["output_device"].toString(); }
+int ConfigManager::micGain() const { return m_root["mic_gain"].toInt(50); }
+int ConfigManager::volume() const  { return m_root["volume"].toInt(100); }
 
 void ConfigManager::setHost(const QString &v)     { m_root["host"] = v; }
 void ConfigManager::setPort(quint16 v)            { m_root["port"] = static_cast<int>(v); }
@@ -95,6 +97,8 @@ void ConfigManager::setCallsign(const QString &v) { m_root["callsign"] = v; }
 void ConfigManager::setDmrId(quint32 v)           { m_root["dmrId"] = static_cast<double>(v); }
 void ConfigManager::setInputDevice(const QString &v) { m_root["input_device"] = v; }
 void ConfigManager::setOutputDevice(const QString &v) { m_root["output_device"] = v; }
+void ConfigManager::setMicGain(int v)             { m_root["mic_gain"] = v; }
+void ConfigManager::setVolume(int v)              { m_root["volume"] = v; }
 
 // ── Hotspot access ──
 
