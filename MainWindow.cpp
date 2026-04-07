@@ -694,6 +694,10 @@ QWidget *MainWindow::createHotspotsPage()
             m_micGainValueLabel->setText(QString::number(value) + "%");
         if (m_audio)
             m_audio->setMicGain(value);
+        if (m_configMgr) {
+            m_configMgr->setMicGain(value);
+            m_configMgr->save();
+        }
     });
 
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
@@ -712,9 +716,16 @@ QWidget *MainWindow::createHotspotsPage()
         }
         if (m_audio)
             m_audio->setPlaybackVolume(value);
+        if (m_configMgr) {
+            m_configMgr->setVolume(value);
+            m_configMgr->save();
+        }
     });
 
-    if (m_audio) {
+    if (m_audio && m_configMgr) {
+        m_micGainSlider->setValue(m_configMgr->micGain());
+        m_volumeSlider->setValue(m_configMgr->volume());
+    } else if (m_audio) {
         m_micGainSlider->setValue(m_audio->micGain());
         m_volumeSlider->setValue(m_audio->playbackVolume());
     } else {
