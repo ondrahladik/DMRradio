@@ -45,15 +45,6 @@ void stopAndroidBackgroundService()
         QNativeInterface::QAndroidApplication::context());
 }
 
-void requestAndroidBatteryOptimizationExemption()
-{
-    QJniObject::callStaticMethod<void>(
-        "cz/dmrradio/BackgroundService",
-        "requestBatteryOptimizationExemption",
-        "(Landroid/content/Context;)V",
-        QNativeInterface::QAndroidApplication::context());
-}
-
 } // namespace
 #endif
 
@@ -190,12 +181,27 @@ int main(int argc, char *argv[])
 
 #ifdef Q_OS_ANDROID
     startAndroidBackgroundService();
-    requestAndroidBatteryOptimizationExemption();
     QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
         stopAndroidBackgroundService();
     });
 
     QTimer::singleShot(0, &app, [&app]() {
+        // Request notification permission (Android 13+) so the foreground
+        // service notification is actually visible.
+        QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        if (QNativeInterface::QAndroidApplication::sdkVersion() >= 33) {
+            QJniObject perm = QJniObject::fromString("android.permission.POST_NOTIFICATIONS");
+            jint granted = activity.callMethod<jint>(
+                "checkSelfPermission", "(Ljava/lang/String;)I", perm.object<jstring>());
+            if (granted != 0) {   // PERMISSION_GRANTED == 0
+                QJniEnvironment env;
+                jobjectArray perms = env->NewObjectArray(1, env->FindClass("java/lang/String"), nullptr);
+                env->SetObjectArrayElement(perms, 0, perm.object<jstring>());
+                activity.callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", perms, 1001);
+                env->DeleteLocalRef(perms);
+            }
+        }
+
         QMicrophonePermission micPerm;
         if (app.checkPermission(micPerm) == Qt::PermissionStatus::Undetermined) {
             app.requestPermission(micPerm, &app, [](const QPermission &perm) {
