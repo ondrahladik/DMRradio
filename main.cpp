@@ -19,7 +19,6 @@
 #include "MainWindow.h"
 
 #ifdef Q_OS_ANDROID
-#include <QPermissions>
 #include <QJniObject>
 #include <QJniEnvironment>
 #include <QtCore/qcoreapplication_platform.h>
@@ -74,42 +73,33 @@ static void requestAndroidPermissions(const QStringList &permissions, int reques
     env->DeleteLocalRef(arr);
 }
 
-// Request all permissions needed at startup.
-// Flow: non-Qt permissions (notifications) → microphone via Qt API.
-void requestStartupPermissions(QApplication &app)
+// Request all permissions needed at startup in a single system call
+// so Android shows all dialogs during the very first launch.
+void requestStartupPermissions()
 {
-    // --- Step 1: POST_NOTIFICATIONS (Android 13 / API 33+) ---
-    // Without this the foreground-service notification is silently hidden.
-    QStringList jniPerms;
+    QStringList needed;
+
+    const QString micPerm   = QStringLiteral("android.permission.RECORD_AUDIO");
+    const QString notifPerm = QStringLiteral("android.permission.POST_NOTIFICATIONS");
+
+    if (!androidPermissionGranted(micPerm)) {
+        qInfo() << "Will request RECORD_AUDIO";
+        needed << micPerm;
+    } else {
+        qInfo() << "RECORD_AUDIO already granted";
+    }
+
     if (QNativeInterface::QAndroidApplication::sdkVersion() >= 33) {
-        const QString notifPerm = QStringLiteral("android.permission.POST_NOTIFICATIONS");
         if (!androidPermissionGranted(notifPerm)) {
-            qInfo() << "Requesting POST_NOTIFICATIONS permission";
-            jniPerms << notifPerm;
+            qInfo() << "Will request POST_NOTIFICATIONS";
+            needed << notifPerm;
+        } else {
+            qInfo() << "POST_NOTIFICATIONS already granted";
         }
     }
-    if (!jniPerms.isEmpty())
-        requestAndroidPermissions(jniPerms);
 
-    // --- Step 2: RECORD_AUDIO (microphone) via Qt API ---
-    QMicrophonePermission micPerm;
-    switch (app.checkPermission(micPerm)) {
-    case Qt::PermissionStatus::Undetermined:
-        qInfo() << "Requesting microphone permission";
-        app.requestPermission(micPerm, &app, [](const QPermission &p) {
-            if (p.status() == Qt::PermissionStatus::Granted)
-                qInfo() << "Microphone permission granted";
-            else
-                qWarning() << "Microphone permission denied — PTT will not work";
-        });
-        break;
-    case Qt::PermissionStatus::Denied:
-        qWarning() << "Microphone permission denied — user must enable in system Settings";
-        break;
-    case Qt::PermissionStatus::Granted:
-        qInfo() << "Microphone permission already granted";
-        break;
-    }
+    if (!needed.isEmpty())
+        requestAndroidPermissions(needed);
 }
 
 } // namespace
@@ -252,8 +242,8 @@ int main(int argc, char *argv[])
         stopAndroidBackgroundService();
     });
 
-    QTimer::singleShot(0, &app, [&app]() {
-        requestStartupPermissions(app);
+    QTimer::singleShot(0, &app, []() {
+        requestStartupPermissions();
     });
 #endif
 
