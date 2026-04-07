@@ -57,17 +57,79 @@ bool ConfigManager::load(const QString &path)
 
     m_root = doc.object();
     m_path = path;
+
+    // Migrate old key names to new ones
+    if (m_root.contains("mic_gain") && !m_root.contains("mic")) {
+        m_root["mic"] = m_root["mic_gain"];
+        m_root.remove("mic_gain");
+    }
+    if (m_root.contains("volume") && !m_root.contains("vol")) {
+        m_root["vol"] = m_root["volume"];
+        m_root.remove("volume");
+    }
+
     return true;
+}
+
+// Serializes a scalar JSON value (string, number, bool, null) to its JSON text.
+static QByteArray encodeScalar(const QJsonValue &v)
+{
+    QJsonArray wrapper;
+    wrapper.append(v);
+    QByteArray bytes = QJsonDocument(wrapper).toJson(QJsonDocument::Compact);
+    return bytes.mid(1, bytes.size() - 2); // strip surrounding [ and ]
 }
 
 bool ConfigManager::save(const QString &path)
 {
+    // Desired top-level key order
+    const QStringList topOrder = {
+        "callsign", "dmrId", "host", "port", "password",
+        "input_device", "output_device", "mic", "vol", "hotspots"
+    };
+
+    // Build write list: ordered keys first, then any unexpected extra keys
+    QStringList writeKeys;
+    for (const QString &k : topOrder)
+        if (m_root.contains(k))
+            writeKeys.append(k);
+    for (const QString &k : m_root.keys())
+        if (!writeKeys.contains(k))
+            writeKeys.append(k);
+
+    QByteArray out = "{\n";
+    for (int i = 0; i < writeKeys.size(); ++i) {
+        const QString &key = writeKeys[i];
+        const QJsonValue val = m_root[key];
+        const bool isLast = (i == writeKeys.size() - 1);
+
+        out += "    \"" + key.toUtf8() + "\": ";
+
+        if (val.isArray()) {
+            // Serialize the array with Qt indentation, then re-indent by 4 extra spaces
+            QByteArray arrBytes = QJsonDocument(val.toArray()).toJson(QJsonDocument::Indented);
+            QList<QByteArray> lines = arrBytes.split('\n');
+            while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+                lines.removeLast();
+            for (int j = 1; j < lines.size(); ++j)
+                if (!lines[j].isEmpty())
+                    lines[j] = "    " + lines[j];
+            out += lines.join('\n');
+        } else if (val.isObject()) {
+            out += QJsonDocument(val.toObject()).toJson(QJsonDocument::Compact);
+        } else {
+            out += encodeScalar(val);
+        }
+
+        if (!isLast) out += ',';
+        out += '\n';
+    }
+    out += "}\n";
+
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
-
-    QJsonDocument doc(m_root);
-    file.write(doc.toJson(QJsonDocument::Indented));
+    file.write(out);
     file.close();
     m_path = path;
     return true;
@@ -87,8 +149,8 @@ QString ConfigManager::callsign() const  { return m_root["callsign"].toString();
 quint32 ConfigManager::dmrId() const     { return static_cast<quint32>(m_root["dmrId"].toDouble(0)); }
 QString ConfigManager::inputDevice() const { return m_root["input_device"].toString(); }
 QString ConfigManager::outputDevice() const { return m_root["output_device"].toString(); }
-int ConfigManager::micGain() const { return m_root["mic_gain"].toInt(50); }
-int ConfigManager::volume() const  { return m_root["volume"].toInt(100); }
+int ConfigManager::micGain() const { return m_root.contains("mic") ? m_root["mic"].toInt(50) : m_root["mic_gain"].toInt(50); }
+int ConfigManager::volume() const  { return m_root.contains("vol") ? m_root["vol"].toInt(100) : m_root["volume"].toInt(100); }
 
 void ConfigManager::setHost(const QString &v)     { m_root["host"] = v; }
 void ConfigManager::setPort(quint16 v)            { m_root["port"] = static_cast<int>(v); }
@@ -97,8 +159,8 @@ void ConfigManager::setCallsign(const QString &v) { m_root["callsign"] = v; }
 void ConfigManager::setDmrId(quint32 v)           { m_root["dmrId"] = static_cast<double>(v); }
 void ConfigManager::setInputDevice(const QString &v) { m_root["input_device"] = v; }
 void ConfigManager::setOutputDevice(const QString &v) { m_root["output_device"] = v; }
-void ConfigManager::setMicGain(int v)             { m_root["mic_gain"] = v; }
-void ConfigManager::setVolume(int v)              { m_root["volume"] = v; }
+void ConfigManager::setMicGain(int v)             { m_root["mic"] = v; m_root.remove("mic_gain"); }
+void ConfigManager::setVolume(int v)              { m_root["vol"] = v; m_root.remove("volume"); }
 
 // ── Hotspot access ──
 
