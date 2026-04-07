@@ -28,6 +28,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QDebug>
+#include <QThread>
 #include <QAudioDevice>
 #include <QSlider>
 #include <QStyleOptionSlider>
@@ -1326,9 +1327,11 @@ void MainWindow::onConnectClicked(int index)
 void MainWindow::onHsPttPressed(int index)
 {
     bool granted = false;
+    auto connType = (m_manager->thread() == QThread::currentThread())
+                    ? Qt::DirectConnection : Qt::BlockingQueuedConnection;
     QMetaObject::invokeMethod(m_manager, [this, index, &granted]() {
         granted = m_manager->requestPtt(index);
-    }, Qt::BlockingQueuedConnection);
+    }, connType);
     if (granted && m_audio) {
         QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->startCapture(); }, Qt::QueuedConnection);
     }
@@ -1355,9 +1358,11 @@ void MainWindow::onMainPttPressed()
     }
 
     bool granted = false;
+    auto connType = (m_manager->thread() == QThread::currentThread())
+                    ? Qt::DirectConnection : Qt::BlockingQueuedConnection;
     QMetaObject::invokeMethod(m_manager, [this, mainIdx, &granted]() {
         granted = m_manager->requestPtt(mainIdx);
-    }, Qt::BlockingQueuedConnection);
+    }, connType);
     if (granted) {
         if (m_audio)
             QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->startCapture(); }, Qt::QueuedConnection);
