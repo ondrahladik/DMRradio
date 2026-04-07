@@ -21,6 +21,7 @@
 #ifdef Q_OS_ANDROID
 #include <QPermissions>
 #include <QJniObject>
+#include <QJniEnvironment>
 #include <QtCore/qcoreapplication_platform.h>
 #endif
 
@@ -43,6 +44,72 @@ void stopAndroidBackgroundService()
         "stop",
         "(Landroid/content/Context;)V",
         QNativeInterface::QAndroidApplication::context());
+}
+
+// Check a single Android permission string. Returns true if already granted.
+static bool androidPermissionGranted(const QString &permission)
+{
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    QJniObject permStr = QJniObject::fromString(permission);
+    jint result = activity.callMethod<jint>(
+        "checkSelfPermission", "(Ljava/lang/String;)I",
+        permStr.object<jstring>());
+    return result == 0; // PackageManager.PERMISSION_GRANTED == 0
+}
+
+// Request a list of Android permissions in one system dialog.
+static void requestAndroidPermissions(const QStringList &permissions, int requestCode = 1001)
+{
+    if (permissions.isEmpty())
+        return;
+
+    QJniEnvironment env;
+    QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    jclass stringClass = env->FindClass("java/lang/String");
+    jobjectArray arr = env->NewObjectArray(permissions.size(), stringClass, nullptr);
+    for (int i = 0; i < permissions.size(); ++i)
+        env->SetObjectArrayElement(arr, i, QJniObject::fromString(permissions[i]).object<jstring>());
+
+    activity.callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", arr, requestCode);
+    env->DeleteLocalRef(arr);
+}
+
+// Request all permissions needed at startup.
+// Flow: non-Qt permissions (notifications) → microphone via Qt API.
+void requestStartupPermissions(QApplication &app)
+{
+    // --- Step 1: POST_NOTIFICATIONS (Android 13 / API 33+) ---
+    // Without this the foreground-service notification is silently hidden.
+    QStringList jniPerms;
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 33) {
+        const QString notifPerm = QStringLiteral("android.permission.POST_NOTIFICATIONS");
+        if (!androidPermissionGranted(notifPerm)) {
+            qInfo() << "Requesting POST_NOTIFICATIONS permission";
+            jniPerms << notifPerm;
+        }
+    }
+    if (!jniPerms.isEmpty())
+        requestAndroidPermissions(jniPerms);
+
+    // --- Step 2: RECORD_AUDIO (microphone) via Qt API ---
+    QMicrophonePermission micPerm;
+    switch (app.checkPermission(micPerm)) {
+    case Qt::PermissionStatus::Undetermined:
+        qInfo() << "Requesting microphone permission";
+        app.requestPermission(micPerm, &app, [](const QPermission &p) {
+            if (p.status() == Qt::PermissionStatus::Granted)
+                qInfo() << "Microphone permission granted";
+            else
+                qWarning() << "Microphone permission denied — PTT will not work";
+        });
+        break;
+    case Qt::PermissionStatus::Denied:
+        qWarning() << "Microphone permission denied — user must enable in system Settings";
+        break;
+    case Qt::PermissionStatus::Granted:
+        qInfo() << "Microphone permission already granted";
+        break;
+    }
 }
 
 } // namespace
@@ -186,29 +253,7 @@ int main(int argc, char *argv[])
     });
 
     QTimer::singleShot(0, &app, [&app]() {
-        // Request notification permission (Android 13+) so the foreground
-        // service notification is actually visible.
-        QJniObject activity = QNativeInterface::QAndroidApplication::context();
-        if (QNativeInterface::QAndroidApplication::sdkVersion() >= 33) {
-            QJniObject perm = QJniObject::fromString("android.permission.POST_NOTIFICATIONS");
-            jint granted = activity.callMethod<jint>(
-                "checkSelfPermission", "(Ljava/lang/String;)I", perm.object<jstring>());
-            if (granted != 0) {   // PERMISSION_GRANTED == 0
-                QJniEnvironment env;
-                jobjectArray perms = env->NewObjectArray(1, env->FindClass("java/lang/String"), nullptr);
-                env->SetObjectArrayElement(perms, 0, perm.object<jstring>());
-                activity.callMethod<void>("requestPermissions", "([Ljava/lang/String;I)V", perms, 1001);
-                env->DeleteLocalRef(perms);
-            }
-        }
-
-        QMicrophonePermission micPerm;
-        if (app.checkPermission(micPerm) == Qt::PermissionStatus::Undetermined) {
-            app.requestPermission(micPerm, &app, [](const QPermission &perm) {
-                if (perm.status() == Qt::PermissionStatus::Denied)
-                    qWarning() << "Android microphone permission denied at startup";
-            });
-        }
+        requestStartupPermissions(app);
     });
 #endif
 
