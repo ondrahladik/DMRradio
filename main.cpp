@@ -232,7 +232,7 @@ int main(int argc, char *argv[])
     app.setQuitOnLastWindowClosed(false);
 #endif
     app.setApplicationName("DMR radio");
-    app.setApplicationVersion("1.0.6");
+    app.setApplicationVersion("1.0.7");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.installEventFilter(new ClickOutsideFilter(&app));
 
