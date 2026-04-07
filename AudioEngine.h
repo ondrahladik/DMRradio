@@ -76,6 +76,9 @@ private:
     bool m_initialized = false;
     bool m_bufferPrimed = false;
     int m_playbackVolume = 100;
+#ifdef Q_OS_ANDROID
+    bool m_nativeAudioReady = false;
+#endif
     int m_micGain = 50;
     static constexpr int JITTER_BUFFER_BYTES = 2880;
 };

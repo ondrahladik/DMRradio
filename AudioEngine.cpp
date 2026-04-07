@@ -8,6 +8,8 @@
 #ifdef Q_OS_ANDROID
 #include <QPermissions>
 #include <QCoreApplication>
+#include <QJniObject>
+#include <QJniEnvironment>
 #endif
 
 static constexpr int DRAIN_INTERVAL_MS    = 10;
@@ -26,6 +28,13 @@ AudioEngine::~AudioEngine()
     stopCapture();
     if (m_drainTimer)
         m_drainTimer->stop();
+#ifdef Q_OS_ANDROID
+    if (m_nativeAudioReady) {
+        QJniObject::callStaticMethod<void>(
+            "cz/dmrradio/NativeAudio", "release", "()V");
+        m_nativeAudioReady = false;
+    }
+#endif
 }
 
 void AudioEngine::setupFormat()
@@ -71,6 +80,20 @@ QAudioDevice AudioEngine::findOutputDevice() const
 
 bool AudioEngine::setupOutputSink()
 {
+#ifdef Q_OS_ANDROID
+    // Use Android native AudioTrack with USAGE_VOICE_COMMUNICATION so the
+    // system audio policy will NOT mute us when the screen is off / app is
+    // in the background.  Qt's QAudioSink (AAudio backend) uses USAGE_MEDIA
+    // which Android silences on window-focus-loss.
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/NativeAudio", "init", "(I)V", TARGET_RATE);
+    m_nativeAudioReady = true;
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/NativeAudio", "setVolume", "(F)V",
+        static_cast<float>(std::clamp(m_playbackVolume, 0, 100) / 100.0));
+    emit logMessage("AudioEngine: Native AudioTrack (VOICE_COMMUNICATION, 8 kHz mono)");
+    return true;
+#else
     QAudioDevice outputDevice = findOutputDevice();
     if (outputDevice.isNull()) {
         emit logMessage("AudioEngine: No audio output device found");
@@ -100,6 +123,7 @@ bool AudioEngine::setupOutputSink()
 
     emit logMessage(QString("AudioEngine: Output device: %1").arg(outputDevice.description()));
     return true;
+#endif
 }
 
 bool AudioEngine::initialize(const QString &inputDeviceName, const QString &outputDeviceName)
@@ -247,11 +271,26 @@ void AudioEngine::stopCapture()
 
 void AudioEngine::playPCM(const QByteArray &pcm)
 {
-    if (!m_initialized || !m_speakerDevice || m_capturing)
+    if (!m_initialized || m_capturing)
         return;
+
+#ifdef Q_OS_ANDROID
+    if (!m_nativeAudioReady) {
+        if (!setupOutputSink())
+            return;
+    }
+#else
+    if (!m_speakerDevice)
+        return;
+
+    if (!m_audioSink || m_audioSink->state() == QAudio::StoppedState) {
+        if (!setupOutputSink())
+            return;
+    }
 
     if (m_audioSink && m_audioSink->state() == QAudio::SuspendedState)
         m_audioSink->resume();
+#endif
 
     m_playbackBuffer.append(pcm);
 
@@ -271,15 +310,25 @@ void AudioEngine::resetPlayback()
 {
     m_playbackBuffer.clear();
     m_bufferPrimed = false;
+#ifndef Q_OS_ANDROID
     if (m_audioSink && m_audioSink->state() == QAudio::ActiveState)
         m_audioSink->suspend();
+#endif
 }
 
 void AudioEngine::setPlaybackVolume(int percent)
 {
     m_playbackVolume = std::clamp(percent, 0, 100);
+#ifdef Q_OS_ANDROID
+    if (m_nativeAudioReady) {
+        QJniObject::callStaticMethod<void>(
+            "cz/dmrradio/NativeAudio", "setVolume", "(F)V",
+            static_cast<float>(m_playbackVolume / 100.0));
+    }
+#else
     if (m_audioSink)
         m_audioSink->setVolume(m_playbackVolume / 100.0);
+#endif
 }
 
 void AudioEngine::setMicGain(int percent)
@@ -307,8 +356,37 @@ QByteArray AudioEngine::applyMicGain(const QByteArray &pcm) const
 
 void AudioEngine::drainPlaybackBuffer()
 {
-    if (m_playbackBuffer.isEmpty() || !m_speakerDevice)
+    if (m_playbackBuffer.isEmpty())
         return;
+
+#ifdef Q_OS_ANDROID
+    if (!m_nativeAudioReady)
+        return;
+
+    if (!m_bufferPrimed) {
+        if (m_playbackBuffer.size() < JITTER_BUFFER_BYTES)
+            return;
+        m_bufferPrimed = true;
+    }
+
+    QJniEnvironment env;
+    const int len = m_playbackBuffer.size();
+    jbyteArray jdata = env->NewByteArray(len);
+    env->SetByteArrayRegion(jdata, 0, len,
+        reinterpret_cast<const jbyte *>(m_playbackBuffer.constData()));
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/NativeAudio", "write", "([BII)V",
+        jdata, jint(0), jint(len));
+    env->DeleteLocalRef(jdata);
+    m_playbackBuffer.clear();
+#else
+    if (!m_speakerDevice)
+        return;
+
+    if (m_audioSink && m_audioSink->state() == QAudio::StoppedState) {
+        if (!setupOutputSink())
+            return;
+    }
 
     if (!m_bufferPrimed) {
         if (m_playbackBuffer.size() < JITTER_BUFFER_BYTES)
@@ -326,6 +404,7 @@ void AudioEngine::drainPlaybackBuffer()
         m_audioSink->suspend();
         m_bufferPrimed = false;
     }
+#endif
 }
 
 QByteArray AudioEngine::resampleToTarget(const QByteArray &raw)
