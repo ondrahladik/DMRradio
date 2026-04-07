@@ -2,7 +2,6 @@
 #include "MainWindow.h"
 #include "HotspotManager.h"
 #include "AudioEngine.h"
-#include "AmbeDecoder.h"
 #include "ConfigManager.h"
 #include "Hotspot.h"
 
@@ -127,7 +126,6 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     , m_manager(manager)
     , m_audio(audio)
     , m_configMgr(config)
-    , m_decoder(new AmbeDecoder())
 {
     setWindowTitle("DMR radio");
 #ifdef Q_OS_ANDROID
@@ -146,14 +144,7 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     connect(m_manager, &HotspotManager::pttChanged, this, &MainWindow::onPttChanged);
     connect(m_audio, &AudioEngine::logMessage, this, &MainWindow::addLog);
 
-    connect(m_audio, &AudioEngine::pcmCaptured, this, [this](const QByteArray &data) {
-        int txIdx = m_manager->activeTxIndex();
-        if (txIdx >= 0) {
-            Hotspot *hs = m_manager->hotspot(txIdx);
-            if (hs)
-                hs->sendAudioData(data);
-        }
-    });
+    connect(m_audio, &AudioEngine::pcmCaptured, m_manager, &HotspotManager::onPcmCaptured);
 
     wireHotspotConnections();
     loadSettingsToUi();
@@ -170,7 +161,6 @@ MainWindow::~MainWindow()
 {
     if (qApp)
         qApp->removeEventFilter(this);
-    delete m_decoder;
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -251,14 +241,10 @@ void MainWindow::wireHotspotConnections()
         if (!hs)
             continue;
 
-        connect(hs, &Hotspot::audioDataReceived, this, [this](const QByteArray &ambe) {
-            QByteArray pcm = m_decoder->decode(ambe);
-            if (!pcm.isEmpty())
-                m_audio->playPCM(pcm);
-        });
+        // Audio pipeline (decode + play) is handled entirely by HotspotManager
+        // on the radioThread — no main-thread involvement, so it works in background.
+        // Here we only wire UI-related signals.
         connect(hs, &Hotspot::voiceStreamEnded, this, [this, i, hs]() {
-            m_decoder->reset();
-            m_audio->resetPlayback();
             addLog(QString("[%1] Decoder reset (stream boundary)").arg(hs->name()));
             onVoiceCallEnded(i);
         });
@@ -668,8 +654,11 @@ QWidget *MainWindow::createHotspotsPage()
     connect(m_micGainSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_micGainValueLabel)
             m_micGainValueLabel->setText(QString::number(value) + "%");
-        if (m_audio)
-            m_audio->setMicGain(value);
+        if (m_audio) {
+            QMetaObject::invokeMethod(m_audio, [audio = m_audio, value]() {
+                audio->setMicGain(value);
+            }, Qt::QueuedConnection);
+        }
         if (m_configMgr) {
             m_configMgr->setMicGain(value);
             m_configMgr->save();
@@ -689,8 +678,11 @@ QWidget *MainWindow::createHotspotsPage()
 #endif
             }
         }
-        if (m_audio)
-            m_audio->setPlaybackVolume(value);
+        if (m_audio) {
+            QMetaObject::invokeMethod(m_audio, [audio = m_audio, value]() {
+                audio->setPlaybackVolume(value);
+            }, Qt::QueuedConnection);
+        }
         if (m_configMgr) {
             m_configMgr->setVolume(value);
             m_configMgr->save();
@@ -1252,7 +1244,9 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 #endif
 
     connect(row.txTgSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [hs](int val) { hs->setTxTalkgroup(val); });
+            this, [hs](int val) {
+                QMetaObject::invokeMethod(hs, [hs, val]() { hs->setTxTalkgroup(val); }, Qt::QueuedConnection);
+            });
 
     row.connectBtn = new QPushButton();
 #ifdef Q_OS_ANDROID
@@ -1322,22 +1316,30 @@ void MainWindow::onConnectClicked(int index)
     Hotspot *hs = m_manager->hotspot(index);
     if (!hs) return;
 
-    if (hs->state() != Hotspot::State::Disconnected)
-        hs->disconnectFromServer();
-    else
-        hs->connectToServer();
+    if (hs->state() != Hotspot::State::Disconnected) {
+        QMetaObject::invokeMethod(hs, [hs]() { hs->disconnectFromServer(); }, Qt::QueuedConnection);
+    } else {
+        QMetaObject::invokeMethod(hs, [hs]() { hs->connectToServer(); }, Qt::QueuedConnection);
+    }
 }
 
 void MainWindow::onHsPttPressed(int index)
 {
-    if (m_manager->requestPtt(index))
-        m_audio->startCapture();
+    bool granted = false;
+    QMetaObject::invokeMethod(m_manager, [this, index, &granted]() {
+        granted = m_manager->requestPtt(index);
+    }, Qt::BlockingQueuedConnection);
+    if (granted && m_audio) {
+        QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->startCapture(); }, Qt::QueuedConnection);
+    }
 }
 
 void MainWindow::onHsPttReleased(int index)
 {
-    m_audio->stopCapture();
-    m_manager->releasePtt(index);
+    if (m_audio) {
+        QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->stopCapture(); }, Qt::QueuedConnection);
+    }
+    QMetaObject::invokeMethod(m_manager, [this, index]() { m_manager->releasePtt(index); }, Qt::QueuedConnection);
 }
 
 void MainWindow::onMainPttPressed()
@@ -1352,10 +1354,16 @@ void MainWindow::onMainPttPressed()
         return;
     }
 
-    if (m_manager->requestPtt(mainIdx))
-        m_audio->startCapture();
-    else if (m_mainPttBtn)
+    bool granted = false;
+    QMetaObject::invokeMethod(m_manager, [this, mainIdx, &granted]() {
+        granted = m_manager->requestPtt(mainIdx);
+    }, Qt::BlockingQueuedConnection);
+    if (granted) {
+        if (m_audio)
+            QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->startCapture(); }, Qt::QueuedConnection);
+    } else if (m_mainPttBtn) {
         m_mainPttBtn->setDown(false);
+    }
 }
 
 void MainWindow::onMainPttReleased()
@@ -1366,16 +1374,19 @@ void MainWindow::onMainPttReleased()
     int mainIdx = m_manager->mainHotspotIndex();
     if (mainIdx < 0) return;
 
-    m_audio->stopCapture();
-    m_manager->releasePtt(mainIdx);
+    if (m_audio) {
+        QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->stopCapture(); }, Qt::QueuedConnection);
+    }
+    QMetaObject::invokeMethod(m_manager, [this, mainIdx]() { m_manager->releasePtt(mainIdx); }, Qt::QueuedConnection);
 }
 
 void MainWindow::onCallTypeToggled()
 {
     m_isPrivateCall = !m_isPrivateCall;
     for (int i = 0; i < m_manager->count(); ++i)
-        if (auto *hs = m_manager->hotspot(i))
-            hs->setPrivateCall(m_isPrivateCall);
+        if (auto *hs = m_manager->hotspot(i)) {
+            QMetaObject::invokeMethod(hs, [hs, priv = m_isPrivateCall]() { hs->setPrivateCall(priv); }, Qt::QueuedConnection);
+        }
 
     if (m_extraBtn) {
         if (m_isPrivateCall) {
@@ -1402,7 +1413,9 @@ void MainWindow::onMuteToggled()
             m_volumeSlider->setValue(0);  // valueChanged will set m_isMuted=true and update icon
         else {
             m_isMuted = true;
-            if (m_audio) m_audio->setPlaybackVolume(0);
+            if (m_audio) {
+                QMetaObject::invokeMethod(m_audio, [audio = m_audio]() { audio->setPlaybackVolume(0); }, Qt::QueuedConnection);
+            }
             if (m_muteBtn) m_muteBtn->setIcon(QIcon(":/icons/mute-on.png"));
         }
     } else {
@@ -1411,7 +1424,9 @@ void MainWindow::onMuteToggled()
             m_volumeSlider->setValue(m_savedVolume);
         else {
             m_isMuted = false;
-            if (m_audio) m_audio->setPlaybackVolume(m_savedVolume);
+            if (m_audio) {
+                QMetaObject::invokeMethod(m_audio, [audio = m_audio, vol = m_savedVolume]() { audio->setPlaybackVolume(vol); }, Qt::QueuedConnection);
+            }
             if (m_muteBtn) m_muteBtn->setIcon(QIcon(":/icons/mute-off.png"));
         }
     }

@@ -8,6 +8,8 @@
 #include <QAbstractSpinBox>
 #include <QGuiApplication>
 #include <QInputMethod>
+#include <QTimer>
+#include <QThread>
 #include <QWidget>
 #include <QMessageBox>
 
@@ -15,6 +17,45 @@
 #include "HotspotManager.h"
 #include "AudioEngine.h"
 #include "MainWindow.h"
+
+#ifdef Q_OS_ANDROID
+#include <QPermissions>
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
+
+#ifdef Q_OS_ANDROID
+namespace {
+
+void startAndroidBackgroundService()
+{
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/BackgroundService",
+        "start",
+        "(Landroid/content/Context;)V",
+        QNativeInterface::QAndroidApplication::context());
+}
+
+void stopAndroidBackgroundService()
+{
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/BackgroundService",
+        "stop",
+        "(Landroid/content/Context;)V",
+        QNativeInterface::QAndroidApplication::context());
+}
+
+void requestAndroidBatteryOptimizationExemption()
+{
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/BackgroundService",
+        "requestBatteryOptimizationExemption",
+        "(Landroid/content/Context;)V",
+        QNativeInterface::QAndroidApplication::context());
+}
+
+} // namespace
+#endif
 
 static const char *APP_DARK_STYLE = R"(
 QWidget {
@@ -139,10 +180,31 @@ int main(int argc, char *argv[])
     qputenv("QT_ANDROID_VOLUME_KEYS", "1");
 #endif
     QApplication app(argc, argv);
+#ifdef Q_OS_ANDROID
+    app.setQuitOnLastWindowClosed(false);
+#endif
     app.setApplicationName("DMR radio");
     app.setApplicationVersion("1.0.6");
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.installEventFilter(new ClickOutsideFilter(&app));
+
+#ifdef Q_OS_ANDROID
+    startAndroidBackgroundService();
+    requestAndroidBatteryOptimizationExemption();
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, []() {
+        stopAndroidBackgroundService();
+    });
+
+    QTimer::singleShot(0, &app, [&app]() {
+        QMicrophonePermission micPerm;
+        if (app.checkPermission(micPerm) == Qt::PermissionStatus::Undetermined) {
+            app.requestPermission(micPerm, &app, [](const QPermission &perm) {
+                if (perm.status() == Qt::PermissionStatus::Denied)
+                    qWarning() << "Android microphone permission denied at startup";
+            });
+        }
+    });
+#endif
 
     const QString configPath = ConfigManager::resolveConfigPath();
 
@@ -189,7 +251,25 @@ int main(int argc, char *argv[])
         qWarning() << "Audio engine initialization failed.";
     }
 
+    // Wire audio engine before MainWindow so the decode→play pipeline
+    // runs entirely on the radioThread (bypasses the suspended UI thread
+    // when Android backgrounds the app).
+    manager.setAudioEngine(&audio);
+
     MainWindow window(&manager, &audio, &config);
+
+#ifdef Q_OS_ANDROID
+    QThread radioThread;
+    radioThread.setObjectName("RadioWorker");
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &radioThread, &QThread::quit);
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&radioThread]() {
+        radioThread.wait();
+    });
+    manager.moveToThread(&radioThread);
+    audio.moveToThread(&radioThread);
+    radioThread.start();
+#endif
+
 #ifdef Q_OS_ANDROID
     window.showMaximized();
 #else

@@ -22,7 +22,6 @@ class QEvent;
 class HotspotManager;
 class AudioEngine;
 class Hotspot;
-class AmbeDecoder;
 class ConfigManager;
 
 struct HotspotRow {
@@ -83,7 +82,6 @@ private:
 
     HotspotManager *m_manager = nullptr;
     AudioEngine *m_audio = nullptr;
-    AmbeDecoder *m_decoder = nullptr;
     ConfigManager *m_configMgr = nullptr;
 
     QVector<HotspotRow> m_rows;

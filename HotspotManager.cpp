@@ -1,4 +1,5 @@
 #include "HotspotManager.h"
+#include "AudioEngine.h"
 #include "ConfigManager.h"
 #include <QDebug>
 #include <QtAlgorithms>
@@ -133,12 +134,55 @@ void HotspotManager::releasePtt(int hotspotIndex)
     emit pttChanged(hotspotIndex, false);
 }
 
+void HotspotManager::onPcmCaptured(const QByteArray &data)
+{
+    if (m_activeTxIndex < 0)
+        return;
+
+    Hotspot *hs = hotspot(m_activeTxIndex);
+    if (hs)
+        hs->sendAudioData(data);
+}
+
+void HotspotManager::setAudioEngine(AudioEngine *audio)
+{
+    m_audio = audio;
+    for (Hotspot *hs : m_hotspots)
+        wireAudioConnections(hs);
+}
+
+void HotspotManager::wireAudioConnections(Hotspot *hs)
+{
+    if (!m_audio)
+        return;
+    connect(hs, &Hotspot::audioDataReceived, this, &HotspotManager::onAudioData);
+    connect(hs, &Hotspot::voiceStreamEnded, this, &HotspotManager::onVoiceEnded);
+}
+
+void HotspotManager::onAudioData(const QByteArray &ambe)
+{
+    if (!m_audio)
+        return;
+    QByteArray pcm = m_decoder.decode(ambe);
+    if (!pcm.isEmpty())
+        m_audio->playPCM(pcm);
+}
+
+void HotspotManager::onVoiceEnded()
+{
+    m_decoder.reset();
+    if (m_audio)
+        m_audio->resetPlayback();
+}
+
 void HotspotManager::addHotspot(const Hotspot::Config &cfg)
 {
     auto *hs = new Hotspot(cfg, this);
     int index = m_hotspots.size();
 
     connect(hs, &Hotspot::logMessage, this, &HotspotManager::logMessage);
+
+    wireAudioConnections(hs);
 
     m_hotspots.append(hs);
     emit hotspotAdded(index, hs);
