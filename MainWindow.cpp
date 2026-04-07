@@ -121,10 +121,6 @@ QHash<quint32, QPair<QString, QString>> loadDmrLookup(const QString &filePath)
 
 } // namespace
 
-// ──────────────────────────────────────────────
-//  Constructor / Destructor
-// ──────────────────────────────────────────────
-
 MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
                        ConfigManager *config, QWidget *parent)
     : QMainWindow(parent)
@@ -135,7 +131,6 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
 {
     setWindowTitle("DMR radio");
 #ifdef Q_OS_ANDROID
-    // On Android let the window fill the screen; layout stays compact.
     setMinimumWidth(340);
 #else
     setFixedWidth(340);
@@ -147,12 +142,10 @@ MainWindow::MainWindow(HotspotManager *manager, AudioEngine *audio,
     checkAndUpdateDmrIds();
     qApp->installEventFilter(this);
 
-    // Wire manager signals
     connect(m_manager, &HotspotManager::logMessage, this, &MainWindow::addLog);
     connect(m_manager, &HotspotManager::pttChanged, this, &MainWindow::onPttChanged);
     connect(m_audio, &AudioEngine::logMessage, this, &MainWindow::addLog);
 
-    // Forward captured audio to the active transmitting hotspot
     connect(m_audio, &AudioEngine::pcmCaptured, this, [this](const QByteArray &data) {
         int txIdx = m_manager->activeTxIndex();
         if (txIdx >= 0) {
@@ -309,10 +302,6 @@ void MainWindow::rebuildHotspotsPage()
     updateMainPttState();
 }
 
-// ──────────────────────────────────────────────
-//  UI construction
-// ──────────────────────────────────────────────
-
 void MainWindow::buildUi()
 {
     auto *central = new QWidget(this);
@@ -320,7 +309,6 @@ void MainWindow::buildUi()
     mainLayout->setContentsMargins(6, 6, 6, 6);
     mainLayout->setSpacing(4);
 
-    // Minimal top tab bar
     auto *navLayout = new QHBoxLayout();
     navLayout->setSpacing(2);
 
@@ -386,8 +374,6 @@ void MainWindow::switchPage(int index)
     }
 }
 
-// ── Page 0: Hotspots ──
-
 QWidget *MainWindow::createHotspotsPage()
 {
     auto *page = new QWidget();
@@ -401,7 +387,6 @@ QWidget *MainWindow::createHotspotsPage()
 #endif
     m_rows.clear();
 
-    // Hotspot rows: [● Name] [TG:spin] [CONNECT] [PTT]
     for (int i = 0; i < m_manager->count(); ++i) {
         Hotspot *hs = m_manager->hotspot(i);
         HotspotRow row = createHotspotRow(i, hs);
@@ -433,13 +418,11 @@ QWidget *MainWindow::createHotspotsPage()
 
 
 
-    // Caller / target panel — 2×2 grid divided by a vertical and horizontal separator
     auto *panel = new QFrame();
     panel->setFrameShape(QFrame::StyledPanel);
     panel->setStyleSheet(
         "QFrame { background-color: #1b1b1b; border: 1px solid #2f2f2f; border-radius: 6px; }");
 
-    // Creates a cell widget: small label on top, larger value label below, both centered
     auto makeCell = [](const QString &labelText, QLabel *&valueLabel,
                        const QString &valueColor, int fontSize) -> QWidget * {
         auto *cell = new QWidget();
@@ -483,9 +466,6 @@ QWidget *MainWindow::createHotspotsPage()
         return cell;
     };
 
-    // Grid layout: col 0 = left, col 1 = vertical divider, col 2 = right
-    //              row 0 = top cells, row 1 = horizontal divider, row 2 = bottom cells
-    // Guarantees both horizontal dividers sit at exactly the same height.
     auto *grid = new QGridLayout(panel);
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setSpacing(0);
@@ -499,7 +479,6 @@ QWidget *MainWindow::createHotspotsPage()
 
     const QString divStyle = "QFrame { background-color: #252525; color: #252525; border: none; }";
 
-    // Single horizontal divider in row 1 — spans all 3 columns so both sides align perfectly
     auto *hLine = new QFrame();
     hLine->setFrameShape(QFrame::HLine);
     hLine->setFrameShadow(QFrame::Plain);
@@ -510,7 +489,6 @@ QWidget *MainWindow::createHotspotsPage()
     grid->addWidget(makeCell("Source", m_callerLabel,  "#3fc3f7", 12), 2, 0);
     grid->addWidget(makeCell("Target", m_targetLabel,  "#3fc3f7", 10), 2, 2);
 
-    // Vertical divider in col 1 — spans all 3 rows
     auto *vLine = new QFrame();
     vLine->setFrameShape(QFrame::VLine);
     vLine->setFrameShadow(QFrame::Plain);
@@ -524,7 +502,6 @@ QWidget *MainWindow::createHotspotsPage()
     layout->addWidget(panel, 1);  // stretch to use extra height for caller info
 #endif
 
-    // Audio level bargraph — full width, above volume control
     auto *levelFrame = new QFrame();
     levelFrame->setFrameShape(QFrame::StyledPanel);
     levelFrame->setStyleSheet(
@@ -565,7 +542,6 @@ QWidget *MainWindow::createHotspotsPage()
 
     layout->addWidget(levelFrame);
 
-    // Full-width volume controls
     auto *volumeFrame = new QFrame();
     volumeFrame->setFrameShape(QFrame::StyledPanel);
     volumeFrame->setStyleSheet(
@@ -703,7 +679,6 @@ QWidget *MainWindow::createHotspotsPage()
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value) {
         if (m_volumeValueLabel)
             m_volumeValueLabel->setText(QString::number(value) + "%");
-        // Keep mute button icon in sync with actual volume level
         bool shouldBeMuted = (value == 0);
         if (shouldBeMuted != m_isMuted) {
             m_isMuted = shouldBeMuted;
@@ -737,7 +712,6 @@ QWidget *MainWindow::createHotspotsPage()
 
     layout->addWidget(volumeFrame);
 
-    // Extra buttons row (placeholder + mute)
     auto *btnRowWidget = new QWidget();
     auto *btnRowLayout = new QHBoxLayout(btnRowWidget);
     btnRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -911,8 +885,6 @@ QWidget *MainWindow::createAboutPage()
     return page;
 }
 
-// ── Page 1: Settings ──
-
 QWidget *MainWindow::createSettingsPage()
 {
     auto *page = new QWidget();
@@ -939,7 +911,6 @@ QWidget *MainWindow::createSettingsPage()
 
     auto *scrollContent = new QWidget();
 #ifdef Q_OS_ANDROID
-    // Let content adapt to screen width
 #else
     scrollContent->setMinimumWidth(332);
     scrollContent->setMaximumWidth(332);
@@ -963,7 +934,6 @@ QWidget *MainWindow::createSettingsPage()
 
     const int minH = 28;
 
-    // ── Server group ──
     auto *serverGroup = new QGroupBox("Server", scrollContent);
     serverGroup->setStyleSheet(sectionStyle);
     auto *serverForm = new QFormLayout(serverGroup);
@@ -985,7 +955,6 @@ QWidget *MainWindow::createSettingsPage()
     serverForm->addRow("Password:", m_settPassword);
     layout->addWidget(serverGroup);
 
-    // ── Station group ──
     auto *stationGroup = new QGroupBox("Station", scrollContent);
     stationGroup->setStyleSheet(sectionStyle);
     auto *stationForm = new QFormLayout(stationGroup);
@@ -1003,7 +972,6 @@ QWidget *MainWindow::createSettingsPage()
     stationForm->addRow("DMR ID:", m_settDmrId);
     layout->addWidget(stationGroup);
 
-    // ── Audio group ──
     auto *audioGroup = new QGroupBox("Audio", scrollContent);
     audioGroup->setStyleSheet(sectionStyle);
     auto *audioGrid = new QGridLayout(audioGroup);
@@ -1038,7 +1006,6 @@ QWidget *MainWindow::createSettingsPage()
     audioGrid->setColumnStretch(1, 1);
     layout->addWidget(audioGroup);
 
-    // ── Hotspots group ──
     auto *tgGroup = new QGroupBox("Hotspots", scrollContent);
     tgGroup->setStyleSheet(sectionStyle);
     auto *tgLayout = new QVBoxLayout(tgGroup);
@@ -1050,7 +1017,6 @@ QWidget *MainWindow::createSettingsPage()
     for (int i = 0; i < hsCount; ++i) {
         TgRow tr;
 
-        // Row 1: ON + RX checkboxes
         auto *flagsRow = new QHBoxLayout();
         flagsRow->setSpacing(6);
 
@@ -1064,7 +1030,6 @@ QWidget *MainWindow::createSettingsPage()
         flagsRow->addWidget(tr.isMain);
         flagsRow->addStretch();
 
-        // Row 2: Name + Suffix on one line
         auto *nameRow = new QHBoxLayout();
         nameRow->setSpacing(4);
 
@@ -1082,7 +1047,6 @@ QWidget *MainWindow::createSettingsPage()
         nameRow->addWidget(tr.name, 1);
         nameRow->addWidget(tr.suffix, 0);
 
-        // Row 3: Options on its own line
         auto *optForm = new QFormLayout();
         optForm->setSpacing(4);
         tr.options = new QLineEdit();
@@ -1111,7 +1075,6 @@ QWidget *MainWindow::createSettingsPage()
 
     layout->addWidget(tgGroup);
 
-    // Save button
     auto *saveBtn = new QPushButton("Save");
     saveBtn->setMinimumWidth(100);
     saveBtn->setFixedHeight(34);
@@ -1134,8 +1097,6 @@ QWidget *MainWindow::createSettingsPage()
 
     return page;
 }
-
-// ── Page 2: Log ──
 
 QWidget *MainWindow::createLogPage()
 {
@@ -1253,16 +1214,11 @@ QWidget *MainWindow::createLogPage()
     return page;
 }
 
-// ──────────────────────────────────────────────
-//  Hotspot row widget factory
-// ──────────────────────────────────────────────
-
 HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 {
     HotspotRow row;
     row.configIndex = hs->configIndex();
 
-    // Status dot
     row.dotLabel = new QLabel();
 #ifdef Q_OS_ANDROID
     row.dotLabel->setFixedSize(20, 20);
@@ -1274,7 +1230,6 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
         "background-color: #cc3333; border-radius: 7px; border: none;");
 #endif
 
-    // Name
     row.nameLabel = new QLabel(hs->name());
     row.nameLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     QFont boldFont = row.nameLabel->font();
@@ -1284,7 +1239,6 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 #endif
     row.nameLabel->setFont(boldFont);
 
-    // TX TG
     row.txTgSpin = new QSpinBox();
     row.txTgSpin->setRange(1, 99999999);
     row.txTgSpin->setValue(hs->txTalkgroup());
@@ -1300,7 +1254,6 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
     connect(row.txTgSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, [hs](int val) { hs->setTxTalkgroup(val); });
 
-    // CONNECT BUTTON
     row.connectBtn = new QPushButton();
 #ifdef Q_OS_ANDROID
     row.connectBtn->setFixedSize(50, 39);
@@ -1328,7 +1281,6 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
         onConnectClicked(index);
     });
 
-    // PTT BUTTON
     row.pttBtn = new QPushButton("PTT");
 #ifdef Q_OS_ANDROID
     row.pttBtn->setMinimumWidth(81);
@@ -1364,10 +1316,6 @@ HotspotRow MainWindow::createHotspotRow(int index, Hotspot *hs)
 
     return row;
 }
-
-// ──────────────────────────────────────────────
-//  Slot implementations
-// ──────────────────────────────────────────────
 
 void MainWindow::onConnectClicked(int index)
 {
@@ -1596,10 +1544,6 @@ void MainWindow::updateMainPttState()
     m_mainPttBtn->setEnabled(mainHs && mainHs->isConnected());
 }
 
-// ──────────────────────────────────────────────
-//  Logging (with timestamp)
-// ──────────────────────────────────────────────
-
 void MainWindow::addLog(const QString &msg)
 {
     QString timestamp = QTime::currentTime().toString("HH:mm:ss");
@@ -1608,10 +1552,6 @@ void MainWindow::addLog(const QString &msg)
     if (m_logView)
         m_logView->appendPlainText(line);
 }
-
-// ──────────────────────────────────────────────
-//  Settings page
-// ──────────────────────────────────────────────
 
 void MainWindow::loadSettingsToUi()
 {
@@ -1624,7 +1564,6 @@ void MainWindow::loadSettingsToUi()
     m_settCallsign->setText(m_configMgr->callsign());
     m_settDmrId->setText(QString::number(m_configMgr->dmrId()));
 
-    // Select saved input device in combo
     QString savedDev = m_configMgr->inputDevice();
     if (savedDev.isEmpty()) {
         m_settInputDevice->setCurrentIndex(0);
@@ -1731,11 +1670,9 @@ void MainWindow::startDmrIdsDownload(const QString &url, const QString &savePath
         file.write(data);
         file.close();
 
-        // Reload lookup with fresh data
         m_dmrLookup = loadDmrLookup(savePath);
         addLog(QString("DMRIds.dat updated: %1 entries").arg(m_dmrLookup.size()));
 
-        // Update About page date label
         if (m_dmrIdsDateLabel) {
             QFileInfo fiNew(savePath);
             m_dmrIdsDateLabel->setText(fiNew.lastModified().toString("yyyy-MM-dd"));

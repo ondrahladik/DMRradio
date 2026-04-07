@@ -103,8 +103,6 @@ static void placeCwIntoBurst(unsigned char *burst, int cwIdx,
     }
 }
 
-// ──────────────────────────────────────────────
-
 AmbeEncoder::AmbeEncoder()
 {
     m_mbeEncoder = new MBEEncoder();

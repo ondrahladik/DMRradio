@@ -8,10 +8,6 @@
 static constexpr int KEEPALIVE_INTERVAL_MS = 5000;  // 5 seconds
 static constexpr int TX_FRAME_INTERVAL_MS  = 60;    // DMR voice frame interval (~60 ms)
 
-// ──────────────────────────────────────────────
-//  Binary encoding helpers
-// ──────────────────────────────────────────────
-
 QByteArray Hotspot::uint32BE(quint32 val)
 {
     QByteArray ba(4, '\0');
@@ -47,10 +43,6 @@ QByteArray Hotspot::rjust(const QString &str, int len, char pad)
     return ba;
 }
 
-// ──────────────────────────────────────────────
-//  Constructor / Destructor
-// ──────────────────────────────────────────────
-
 Hotspot::Hotspot(const Config &cfg, QObject *parent)
     : QObject(parent)
     , m_config(cfg)
@@ -80,10 +72,6 @@ Hotspot::~Hotspot()
     delete m_encoder;
 }
 
-// ──────────────────────────────────────────────
-//  Connection management (MMDVM handshake)
-// ──────────────────────────────────────────────
-
 void Hotspot::connectToServer()
 {
     if (m_state != State::Disconnected)
@@ -91,7 +79,6 @@ void Hotspot::connectToServer()
 
     m_socket->blockSignals(false);
 
-    // Resolve host
     QHostInfo info = QHostInfo::fromName(m_config.host);
     if (info.addresses().isEmpty()) {
         emit logMessage(QString("[%1] DNS resolution failed for %2")
@@ -100,7 +87,6 @@ void Hotspot::connectToServer()
     }
     m_serverAddress = info.addresses().first();
 
-    // Bind socket to any available local port
     if (m_socket->state() != QAbstractSocket::BoundState) {
         if (!m_socket->bind(QHostAddress::Any, 0)) {
             emit logMessage(QString("[%1] Failed to bind UDP socket: %2")
@@ -109,7 +95,6 @@ void Hotspot::connectToServer()
         }
     }
 
-    // Step 1: Send RPTL login packet
     sendPacket(buildLoginPacket());
     setState(State::LoginSent);
 
@@ -127,7 +112,6 @@ void Hotspot::disconnectFromServer()
     stopTransmit();
     m_keepaliveTimer->stop();
 
-    // Send RPTCL disconnect packet
     sendPacket(buildDisconnectPacket());
 
     m_socket->blockSignals(true);
@@ -150,10 +134,6 @@ void Hotspot::setRxEnabled(bool enabled)
     emit logMessage(QString("[%1] RX %2").arg(m_config.name, enabled ? "enabled" : "disabled"));
 }
 
-// ──────────────────────────────────────────────
-//  PTT / TX
-// ──────────────────────────────────────────────
-
 void Hotspot::startTransmit()
 {
     if (m_state != State::Connected || m_transmitting)
@@ -167,7 +147,6 @@ void Hotspot::startTransmit()
     m_encoder->reset();
     emit transmittingChanged(true);
 
-    // Send voice LC header
     QByteArray headerPayload(33, '\0');
     sendPacket(buildDmrdPacket(headerPayload, true, false));
 
@@ -178,7 +157,6 @@ void Hotspot::startTransmit()
                         .arg(m_txStreamId, 8, 16, QChar('0'))
                         .arg(m_config.srcDmrId));
 
-    // Start periodic voice frame timer
     m_txTimer->start();
 }
 
@@ -189,7 +167,6 @@ void Hotspot::stopTransmit()
 
     m_txTimer->stop();
 
-    // Send voice LC terminator
     QByteArray termPayload(33, '\0');
     sendPacket(buildDmrdPacket(termPayload, false, true));
 
@@ -253,10 +230,6 @@ void Hotspot::onTxTimer()
     m_txFrameCount++;
 }
 
-// ──────────────────────────────────────────────
-//  Keepalive
-// ──────────────────────────────────────────────
-
 void Hotspot::onKeepalive()
 {
     if (m_state != State::Connected)
@@ -264,10 +237,6 @@ void Hotspot::onKeepalive()
 
     sendPacket(buildPingPacket());
 }
-
-// ──────────────────────────────────────────────
-//  Incoming data
-// ──────────────────────────────────────────────
 
 void Hotspot::onReadyRead()
 {
@@ -292,15 +261,12 @@ void Hotspot::processDatagram(const QByteArray &data)
     if (data.size() < 4)
         return;
 
-    // ── RPTACK: Server acknowledgement (at various handshake stages) ──
     if (data.startsWith("RPTACK")) {
         if (m_state == State::LoginSent && data.size() >= 10) {
-            // Response to RPTL: RPTACK + 4-byte salt
             m_salt = data.mid(6, 4);
             emit logMessage(QString("[%1] LOGIN ACK — salt 0x%2")
                                 .arg(m_config.name, m_salt.toHex()));
 
-            // Step 2: Send RPTK auth with SHA256(salt + password)
             sendPacket(buildAuthPacket());
             setState(State::AuthSent);
             emit logMessage(QString("[%1] AUTH SENT").arg(m_config.name));
@@ -308,7 +274,6 @@ void Hotspot::processDatagram(const QByteArray &data)
         else if (m_state == State::AuthSent) {
             emit logMessage(QString("[%1] AUTH ACK — authenticated ✓").arg(m_config.name));
 
-            // Step 3: Send RPTC config
             sendPacket(buildConfigPacket());
             setState(State::ConfigSent);
             emit logMessage(QString("[%1] CONFIG SENT (%2 bytes)")
@@ -319,13 +284,11 @@ void Hotspot::processDatagram(const QByteArray &data)
             emit logMessage(QString("[%1] CONFIG ACK").arg(m_config.name));
 
             if (!m_config.options.isEmpty()) {
-                // Step 4: Send RPTO options
                 sendPacket(buildOptionsPacket());
                 setState(State::OptionsSent);
                 emit logMessage(QString("[%1] OPTIONS SENT: %2")
                                     .arg(m_config.name, m_config.options));
             } else {
-                // No options — go straight to Connected
                 setState(State::Connected);
                 m_keepaliveTimer->start();
                 emit logMessage(QString("[%1] CONNECTED ✓ (no options)").arg(m_config.name));
@@ -339,7 +302,6 @@ void Hotspot::processDatagram(const QByteArray &data)
         return;
     }
 
-    // ── MSTNAK: Server rejection ──
     if (data.startsWith("MSTNAK")) {
         emit logMessage(QString("[%1] ✗ SERVER NAK — rejected in state %2 after %3 (%4 bytes)")
                             .arg(m_config.name)
@@ -355,7 +317,6 @@ void Hotspot::processDatagram(const QByteArray &data)
         return;
     }
 
-    // ── MSTCL: Server closed connection ──
     if (data.startsWith("MSTCL")) {
         emit logMessage(QString("[%1] ✗ SERVER CLOSE — connection terminated by master")
                             .arg(m_config.name));
@@ -368,13 +329,10 @@ void Hotspot::processDatagram(const QByteArray &data)
         return;
     }
 
-    // ── MSTPONG: Keepalive response ──
     if (data.startsWith("MSTPONG")) {
-        // Silently acknowledge — don't flood the log
         return;
     }
 
-    // ── DMRD: Incoming DMR voice/data frame (53 bytes) ──
     if (data.startsWith("DMRD") && data.size() >= 53) {
         quint8  seq   = static_cast<quint8>(data[4]);
         quint32 srcId = (static_cast<quint8>(data[5]) << 16) |
@@ -429,8 +387,6 @@ void Hotspot::processDatagram(const QByteArray &data)
                                 .arg(group ? "Group" : "Private", frameDesc));
         }
 
-        // Only forward actual voice frames to the audio pipeline
-        // (skip headers, terminators, and other data sync frames)
         if (m_rxEnabled && isVoiceFrame) {
             if (m_rxSkipFrames > 0) {
                 m_rxSkipFrames--;
@@ -453,20 +409,14 @@ void Hotspot::processDatagram(const QByteArray &data)
         return;
     }
 
-    // ── Unknown packet ──
     emit logMessage(QString("[%1] RX UNKNOWN: tag=0x%2 size=%3")
                         .arg(m_config.name,
                              data.left(6).toHex(),
                              QString::number(data.size())));
 }
 
-// ──────────────────────────────────────────────
-//  MMDVM Homebrew packet builders
-// ──────────────────────────────────────────────
-
 QByteArray Hotspot::buildLoginPacket()
 {
-    // RPTL(4) + RepeaterID(4) = 8 bytes
     QByteArray pkt;
     pkt.append("RPTL", 4);
     pkt.append(uint32BE(m_config.dmrId));
@@ -584,10 +534,6 @@ QByteArray Hotspot::buildDmrdPacket(const QByteArray &dmrPayload,
 
     return pkt;
 }
-
-// ──────────────────────────────────────────────
-//  State management
-// ──────────────────────────────────────────────
 
 void Hotspot::setState(State s)
 {

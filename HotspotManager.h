@@ -7,8 +7,6 @@
 
 class ConfigManager;
 
-// Manages a collection of Hotspot instances.
-// Only creates enabled hotspots, tracks the main hotspot, enforces single-TX.
 class HotspotManager : public QObject
 {
     Q_OBJECT
@@ -17,10 +15,8 @@ public:
     explicit HotspotManager(QObject *parent = nullptr);
     ~HotspotManager() override;
 
-    // Load hotspot definitions from ConfigManager (only enabled ones).
     bool loadFromConfig(ConfigManager *cfg);
 
-    // Access individual hotspots
     int count() const { return m_hotspots.size(); }
     Hotspot *hotspot(int index) const;
     QList<Hotspot *> hotspots() const { return m_hotspots; }
@@ -28,7 +24,6 @@ public:
     // Main hotspot index within m_hotspots (-1 if none)
     int mainHotspotIndex() const { return m_mainIndex; }
 
-    // Connect / disconnect all hotspots
     void connectAll();
     void disconnectAll();
 

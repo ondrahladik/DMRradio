@@ -16,7 +16,6 @@
 #include "AudioEngine.h"
 #include "MainWindow.h"
 
-// Dark theme applied at application level so all dialogs inherit it
 static const char *APP_DARK_STYLE = R"(
 QWidget {
     background-color: #1e1e1e;
@@ -145,9 +144,6 @@ int main(int argc, char *argv[])
     app.setWindowIcon(QIcon(":/icons/logo.png"));
     app.installEventFilter(new ClickOutsideFilter(&app));
 
-    // Locate config.json — only looks next to the executable.
-    // Check before applying the dark stylesheet so the error dialog
-    // uses the native system appearance.
     const QString configPath = ConfigManager::resolveConfigPath();
 
     ConfigManager config;
@@ -172,7 +168,6 @@ int main(int argc, char *argv[])
     app.setStyleSheet(APP_DARK_STYLE);
 
 #ifdef Q_OS_ANDROID
-    // Larger text on Android for readability on high-DPI touch screens
     app.setStyleSheet(QString(APP_DARK_STYLE) + R"(
         QWidget { font-size: 13pt; }
         QLabel { font-size: 13pt; }
