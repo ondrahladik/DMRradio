@@ -6,14 +6,11 @@
 #include <QJsonParseError>
 #include <QStandardPaths>
 
-// ── Path resolution ──────────────────────────────────────────────────────────
-
 QString ConfigManager::resolveConfigPath()
 {
     const QString fileName = QStringLiteral("config.json");
 
 #ifndef Q_OS_ANDROID
-    // Desktop: look next to the executable
     const QString exeConfig =
         QDir(QCoreApplication::applicationDirPath()).filePath(fileName);
     if (QFile::exists(exeConfig))
@@ -21,7 +18,6 @@ QString ConfigManager::resolveConfigPath()
     return QString();
 #else
     // Android: use writable AppData directory.
-    // If no config exists there yet, copy the default from embedded resources.
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     const QString writablePath = QDir(dir).filePath(fileName);
@@ -29,7 +25,6 @@ QString ConfigManager::resolveConfigPath()
     if (QFile::exists(writablePath))
         return writablePath;
 
-    // First run — copy the bundled default config to writable storage
     if (QFile::exists(QStringLiteral(":/config.json"))) {
         QFile::copy(QStringLiteral(":/config.json"), writablePath);
         // Resource copies are read-only; make writable so saves work
@@ -58,7 +53,6 @@ bool ConfigManager::load(const QString &path)
     m_root = doc.object();
     m_path = path;
 
-    // Migrate old key names to new ones
     if (m_root.contains("mic_gain") && !m_root.contains("mic")) {
         m_root["mic"] = m_root["mic_gain"];
         m_root.remove("mic_gain");
@@ -71,7 +65,6 @@ bool ConfigManager::load(const QString &path)
     return true;
 }
 
-// Serializes a scalar JSON value (string, number, bool, null) to its JSON text.
 static QByteArray encodeScalar(const QJsonValue &v)
 {
     QJsonArray wrapper;
@@ -82,13 +75,11 @@ static QByteArray encodeScalar(const QJsonValue &v)
 
 bool ConfigManager::save(const QString &path)
 {
-    // Desired top-level key order
     const QStringList topOrder = {
         "callsign", "dmrId", "host", "port", "password",
         "input_device", "output_device", "mic", "vol", "hotspots"
     };
 
-    // Build write list: ordered keys first, then any unexpected extra keys
     QStringList writeKeys;
     for (const QString &k : topOrder)
         if (m_root.contains(k))
@@ -140,8 +131,6 @@ bool ConfigManager::save()
     return m_path.isEmpty() ? false : save(m_path);
 }
 
-// ── Global settings ──
-
 QString ConfigManager::host() const      { return m_root["host"].toString("127.0.0.1"); }
 quint16 ConfigManager::port() const      { return static_cast<quint16>(m_root["port"].toInt(62031)); }
 QString ConfigManager::password() const  { return m_root["password"].toString(); }
@@ -161,8 +150,6 @@ void ConfigManager::setInputDevice(const QString &v) { m_root["input_device"] = 
 void ConfigManager::setOutputDevice(const QString &v) { m_root["output_device"] = v; }
 void ConfigManager::setMicGain(int v)             { m_root["mic"] = v; m_root.remove("mic_gain"); }
 void ConfigManager::setVolume(int v)              { m_root["vol"] = v; m_root.remove("volume"); }
-
-// ── Hotspot access ──
 
 QJsonArray ConfigManager::hotspotsArray() const                { return m_root["hotspots"].toArray(); }
 void ConfigManager::setHotspotsArray(const QJsonArray &arr)    { m_root["hotspots"] = arr; }
@@ -195,7 +182,6 @@ bool ConfigManager::hotspotIsMain(int i) const
 
 quint32 ConfigManager::hotspotDmrId(int i) const
 {
-    // Computed: base DMR ID * 100 + suffix
     return dmrId() * 100 + static_cast<quint32>(hotspotSuffix(i));
 }
 
@@ -216,8 +202,6 @@ int ConfigManager::hotspotTxTg(int i) const
     QJsonArray arr = hotspotsArray();
     return (i >= 0 && i < arr.size()) ? arr[i].toObject()["tx_tg"].toInt(0) : 0;
 }
-
-// ── Hotspot setters ──
 
 void ConfigManager::setHotspotName(int i, const QString &v)
 {

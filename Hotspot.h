@@ -9,7 +9,6 @@
 
 class AmbeEncoder;
 
-// Represents a single DMR hotspot connection (MMDVM Homebrew protocol).
 class Hotspot : public QObject
 {
     Q_OBJECT
@@ -41,7 +40,6 @@ public:
     explicit Hotspot(const Config &cfg, QObject *parent = nullptr);
     ~Hotspot() override;
 
-    // Accessors
     QString name() const { return m_config.name; }
     int talkgroup() const { return m_config.talkgroup; }
     quint32 dmrId() const { return m_config.dmrId; }

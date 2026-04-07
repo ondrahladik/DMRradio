@@ -5,7 +5,6 @@
 #include <QJsonObject>
 #include <QJsonArray>
 
-// Manages loading and saving of the JSON configuration file.
 class ConfigManager
 {
 public:
@@ -23,7 +22,6 @@ public:
 
     QString configPath() const { return m_path; }
 
-    // Global settings
     QString host() const;
     quint16 port() const;
     QString password() const;
@@ -44,7 +42,6 @@ public:
     void setMicGain(int v);
     void setVolume(int v);
 
-    // Hotspot access
     int hotspotCount() const;
     QString hotspotName(int i) const;
     int hotspotSuffix(int i) const;

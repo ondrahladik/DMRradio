@@ -11,8 +11,6 @@
 #include <QByteArray>
 #include <QList>
 
-// Shared audio engine for microphone capture and buffered speaker playback.
-// Handles sample rate conversion and audio preprocessing (DC removal, gain).
 class AudioEngine : public QObject
 {
     Q_OBJECT

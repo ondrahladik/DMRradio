@@ -42,33 +42,15 @@ static const unsigned int DMR_C_TABLE[] = {
     23U, 27U, 31U, 35U, 39U, 43U, 47U, 51U, 55U, 59U, 63U, 67U, 71U
 };
 
-// Read a single bit from a byte array (MSB-first / network byte order).
 static inline int readBit(const unsigned char *data, unsigned int pos)
 {
     return (data[pos >> 3] >> (7 - (pos & 7))) & 1;
 }
 
-// ──────────────────────────────────────────────
-//  Constructor
-// ──────────────────────────────────────────────
-
 AmbeDecoder::AmbeDecoder()
 {
     reset();
 }
-
-// ──────────────────────────────────────────────
-//  Decode one DMR voice burst (33 bytes → 960 bytes PCM)
-//
-//  Pipeline per codeword:
-//    1. extractAmbeCodeword()  — burst deinterleave → ambe_fr[4][24]
-//    2. mbelib internally:
-//       a. mbe_demodulateAmbe3600x2450Data  — AMBE demodulation
-//       b. mbe_eccAmbe3600x2450C0/Data      — Golay FEC correction
-//       c. mbe_decodeAmbe2450Parms          — parameter extraction
-//       d. mbe_synthesizeSpeech             — speech synthesis
-//    3. 160 PCM samples output per codeword
-// ──────────────────────────────────────────────
 
 QByteArray AmbeDecoder::decode(const QByteArray &dmrBurst)
 {
@@ -109,36 +91,10 @@ QByteArray AmbeDecoder::decode(const QByteArray &dmrBurst)
     return pcm;
 }
 
-// ──────────────────────────────────────────────
-//  Reset decoder state (call at stream boundaries)
-// ──────────────────────────────────────────────
-
 void AmbeDecoder::reset()
 {
     mbe_initMbeParms(&m_curMp, &m_prevMp, &m_prevMpEnhanced);
 }
-
-// ──────────────────────────────────────────────
-//  Extract one AMBE+2 codeword from a DMR burst
-//
-//  DMR burst (264 bits / 33 bytes):
-//    bits   0-107  : voice info segment 1 (108 bits)
-//    bits 108-155  : SYNC / embedded signaling (48 bits)
-//    bits 156-263  : voice info segment 2 (108 bits)
-//
-//  Three codewords occupy offsets 0, 72, 192 within the burst.
-//  Codeword 1 (offset 72) spans the sync gap; any bit position
-//  ≥ 108 must be shifted by +48 to land in voice segment 2.
-//
-//  CRITICAL: mbelib stores bits with HIGH index = MSB.
-//  The DMR_A/B/C tables list bits in MSB-first (transmission) order.
-//  We must reverse the index when filling ambe_fr so that:
-//    table[0] (first transmitted, MSB) → highest ambe_fr index
-//    table[N] (last transmitted, LSB)  → lowest ambe_fr index
-//
-//  C0 special case: ambe_fr[0][0] = overall parity bit,
-//    ambe_fr[0][1..23] = Golay(23,12) codeword with [23] = MSB.
-// ──────────────────────────────────────────────
 
 void AmbeDecoder::extractAmbeCodeword(const unsigned char *burst,
                                       int codewordIdx,

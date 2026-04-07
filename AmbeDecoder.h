@@ -20,10 +20,8 @@ class AmbeDecoder
 public:
     AmbeDecoder();
 
-    // Decode one DMR voice burst (33 bytes) → PCM (960 bytes = 60 ms).
     QByteArray decode(const QByteArray &dmrBurst);
 
-    // Reset decoder state (call between voice streams).
     void reset();
 
 private:

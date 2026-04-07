@@ -188,7 +188,6 @@ void AudioEngine::startCapture()
         return;
     }
 
-    // Prefer 8 kHz; fall back to device's native rate with resampling
     QAudioFormat captureFormat = m_format;
     if (!inputDevice.isFormatSupported(captureFormat)) {
         QAudioFormat pref = inputDevice.preferredFormat();
@@ -251,13 +250,11 @@ void AudioEngine::playPCM(const QByteArray &pcm)
     if (!m_initialized || !m_speakerDevice || m_capturing)
         return;
 
-    // Resume audio output if it was suspended (idle state)
     if (m_audioSink && m_audioSink->state() == QAudio::SuspendedState)
         m_audioSink->resume();
 
     m_playbackBuffer.append(pcm);
 
-    // Emit RMS level for the VU bargraph (RX — incoming audio)
     const auto *s = reinterpret_cast<const int16_t *>(pcm.constData());
     const int count = pcm.size() / 2;
     if (count > 0) {
@@ -331,7 +328,6 @@ void AudioEngine::drainPlaybackBuffer()
     }
 }
 
-// Resample raw captured audio to 8 kHz mono 16-bit with anti-aliasing.
 QByteArray AudioEngine::resampleToTarget(const QByteArray &raw)
 {
     if (m_captureRate == TARGET_RATE && m_captureChannels == 1)
@@ -377,7 +373,6 @@ QByteArray AudioEngine::resampleToTarget(const QByteArray &raw)
             return sum / m_captureChannels;
         };
 
-        // Box-filter average over filterLen samples (anti-aliasing)
         double acc = 0.0;
         for (int k = -filterRadius; k <= filterRadius; k++)
             acc += readMono(center + k);
@@ -398,20 +393,14 @@ void AudioEngine::onMicPollTimer()
     if (raw.isEmpty())
         return;
 
-    // Resample to 8 kHz mono if needed
     QByteArray pcm = resampleToTarget(raw);
     if (pcm.isEmpty())
         return;
 
-    // No external preprocessing — the IMBE encoder has its own DC removal
-    // and gain handling. Passing raw PCM preserves maximum signal quality.
-
     pcm = applyMicGain(pcm);
 
-    // Debug log every ~500ms
     m_micDebugCounter++;
     if (m_micDebugCounter % 25 == 1) {
-        // Log PCM level for diagnostics
         const auto *s = reinterpret_cast<const int16_t *>(pcm.constData());
         int count = pcm.size() / 2;
         int16_t minVal = 0, maxVal = 0;
@@ -425,7 +414,6 @@ void AudioEngine::onMicPollTimer()
 
     emit pcmCaptured(pcm);
 
-    // Emit RMS level for the VU bargraph (TX — microphone input)
     {
         const auto *s = reinterpret_cast<const int16_t *>(pcm.constData());
         const int count = pcm.size() / 2;
