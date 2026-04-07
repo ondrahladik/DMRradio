@@ -190,10 +190,11 @@ public class BackgroundService extends Service {
 
         NotificationChannel channel = new NotificationChannel(
             CHANNEL_ID,
-            "DMR radio background",
-            NotificationManager.IMPORTANCE_LOW
+            "DMR Radio Background",
+            NotificationManager.IMPORTANCE_DEFAULT
         );
         channel.setDescription("Keeps DMR radio running in the background");
+        channel.setShowBadge(false);
         manager.createNotificationChannel(channel);
     }
 
@@ -209,12 +210,17 @@ public class BackgroundService extends Service {
         }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("DMR radio běží na pozadí")
-            .setContentText("Hovor zůstane aktivní i po zamčení obrazovky")
+            .setContentTitle("DMR Radio running")
+            .setContentText("Voice call stays active in background")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW);
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE);
+        }
 
         if (contentIntent != null) {
             builder.setContentIntent(contentIntent);
