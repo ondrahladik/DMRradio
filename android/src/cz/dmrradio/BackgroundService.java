@@ -66,6 +66,10 @@ public class BackgroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Re-post the notification on every start command so that if the service
+        // was initially started without POST_NOTIFICATIONS permission, it becomes
+        // visible as soon as the permission is granted and the service is restarted.
+        startForeground(NOTIFICATION_ID, buildNotification());
         return START_STICKY;
     }
 
