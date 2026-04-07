@@ -29,6 +29,9 @@ public class BackgroundService extends Service {
     private int previousAudioMode = AudioManager.MODE_NORMAL;
     private boolean audioFocusGranted;
 
+    private static java.lang.ref.WeakReference<BackgroundService> sInstance;
+    private static String sCallerName = null;
+
     public static void start(Context context) {
         Intent intent = new Intent(context, BackgroundService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -40,6 +43,19 @@ public class BackgroundService extends Service {
 
     public static void stop(Context context) {
         context.stopService(new Intent(context, BackgroundService.class));
+    }
+
+    /** Called from C++ via JNI to update the notification with the active caller name. */
+    public static void updateCallerName(Context context, String name) {
+        sCallerName = (name != null && !name.isEmpty()) ? name : null;
+        BackgroundService svc = (sInstance != null) ? sInstance.get() : null;
+        if (svc != null) {
+            NotificationManager nm =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(NOTIFICATION_ID, svc.buildNotification());
+            }
+        }
     }
 
     public static void requestBatteryOptimizationExemption(Context context) {
@@ -56,6 +72,7 @@ public class BackgroundService extends Service {
 
     @Override
     public void onCreate() {
+        sInstance = new java.lang.ref.WeakReference<>(this);
         super.onCreate();
         acquireWakeLock();
         acquireWifiLock();
@@ -214,8 +231,8 @@ public class BackgroundService extends Service {
         }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("DMR Radio running")
-            .setContentText("Voice call stays active in background")
+            .setContentTitle("DMR radio")
+            .setContentText(sCallerName != null ? sCallerName : "Voice call stays active in background")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

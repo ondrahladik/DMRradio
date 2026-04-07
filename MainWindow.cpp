@@ -1459,12 +1459,14 @@ void MainWindow::onVoiceCallStarted(int /*index*/, quint32 srcId)
     if (m_callerNameLabel)
         m_callerNameLabel->setText("-");
 
+    QString callerName;
     const auto it = m_dmrLookup.constFind(srcId);
     if (it != m_dmrLookup.constEnd()) {
         if (m_callerCallsignLabel)
             m_callerCallsignLabel->setText(it.value().first);
         if (m_callerNameLabel)
             m_callerNameLabel->setText(it.value().second);
+        callerName = it.value().second;
     }
 }
 
@@ -1629,6 +1631,16 @@ void MainWindow::loadDmrIds()
     m_dmrLookup = loadDmrLookup(writablePath);
 #endif
     addLog(QString("DMR ID lookup loaded: %1 entries").arg(m_dmrLookup.size()));
+
+    // Push name-only lookup to HotspotManager so the background notification
+    // can show caller names from the radioThread (UI thread is suspended in background).
+    if (m_manager) {
+        QHash<quint32, QPair<QString, QString>> names;
+        names.reserve(m_dmrLookup.size());
+        for (auto it = m_dmrLookup.constBegin(); it != m_dmrLookup.constEnd(); ++it)
+            names.insert(it.key(), it.value());
+        m_manager->setNameLookup(names);
+    }
 }
 
 void MainWindow::checkAndUpdateDmrIds()
@@ -1687,6 +1699,14 @@ void MainWindow::startDmrIdsDownload(const QString &url, const QString &savePath
 
         m_dmrLookup = loadDmrLookup(savePath);
         addLog(QString("DMRIds.dat updated: %1 entries").arg(m_dmrLookup.size()));
+
+        if (m_manager) {
+            QHash<quint32, QPair<QString, QString>> names;
+            names.reserve(m_dmrLookup.size());
+            for (auto it = m_dmrLookup.constBegin(); it != m_dmrLookup.constEnd(); ++it)
+                names.insert(it.key(), it.value());
+            m_manager->setNameLookup(names);
+        }
 
         if (m_dmrIdsDateLabel) {
             QFileInfo fiNew(savePath);

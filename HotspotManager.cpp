@@ -4,6 +4,11 @@
 #include <QDebug>
 #include <QtAlgorithms>
 
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
+
 HotspotManager::HotspotManager(QObject *parent)
     : QObject(parent)
 {
@@ -151,12 +156,18 @@ void HotspotManager::setAudioEngine(AudioEngine *audio)
         wireAudioConnections(hs);
 }
 
+void HotspotManager::setNameLookup(const QHash<quint32, QPair<QString, QString>> &lookup)
+{
+    m_nameLookup = lookup;
+}
+
 void HotspotManager::wireAudioConnections(Hotspot *hs)
 {
     if (!m_audio)
         return;
     connect(hs, &Hotspot::audioDataReceived, this, &HotspotManager::onAudioData);
-    connect(hs, &Hotspot::voiceStreamEnded, this, &HotspotManager::onVoiceEnded);
+    connect(hs, &Hotspot::voiceStreamEnded,  this, &HotspotManager::onVoiceEnded);
+    connect(hs, &Hotspot::voiceStreamStarted, this, &HotspotManager::onVoiceStreamStarted);
 }
 
 void HotspotManager::onAudioData(const QByteArray &ambe)
@@ -173,6 +184,43 @@ void HotspotManager::onVoiceEnded()
     m_decoder.reset();
     if (m_audio)
         m_audio->resetPlayback();
+
+#ifdef Q_OS_ANDROID
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/BackgroundService",
+        "updateCallerName",
+        "(Landroid/content/Context;Ljava/lang/String;)V",
+        QNativeInterface::QAndroidApplication::context(),
+        QJniObject::fromString(QString()).object<jstring>());
+#endif
+}
+
+void HotspotManager::onVoiceStreamStarted(quint32 srcId, quint32 /*dstId*/)
+{
+#ifdef Q_OS_ANDROID
+    const auto it = m_nameLookup.constFind(srcId);
+    QString display;
+    if (it != m_nameLookup.constEnd()) {
+        const QString &callsign = it.value().first;
+        const QString &name     = it.value().second;
+        if (!callsign.isEmpty() && !name.isEmpty())
+            display = callsign + " (" + name + ")";
+        else if (!callsign.isEmpty())
+            display = callsign;
+        else if (!name.isEmpty())
+            display = name;
+    }
+    if (display.isEmpty())
+        display = QString::number(srcId);
+    QJniObject::callStaticMethod<void>(
+        "cz/dmrradio/BackgroundService",
+        "updateCallerName",
+        "(Landroid/content/Context;Ljava/lang/String;)V",
+        QNativeInterface::QAndroidApplication::context(),
+        QJniObject::fromString(display).object<jstring>());
+#else
+    Q_UNUSED(srcId)
+#endif
 }
 
 void HotspotManager::addHotspot(const Hotspot::Config &cfg)

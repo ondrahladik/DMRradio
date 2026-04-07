@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QList>
+#include <QHash>
 #include "Hotspot.h"
 #include "AmbeDecoder.h"
 
@@ -23,6 +24,10 @@ public:
     // Wires direct (same-thread) connections so the audio pipeline
     // bypasses the UI thread entirely — critical for Android background.
     void setAudioEngine(AudioEngine *audio);
+
+    // Pass DMR ID → name lookup so the background notification can show caller names.
+    // Safe to call from any thread before audio connections are wired.
+    void setNameLookup(const QHash<quint32, QPair<QString, QString>> &lookup);
 
     int count() const { return m_hotspots.size(); }
     Hotspot *hotspot(int index) const;
@@ -51,6 +56,7 @@ signals:
 private slots:
     void onAudioData(const QByteArray &ambe);
     void onVoiceEnded();
+    void onVoiceStreamStarted(quint32 srcId, quint32 dstId);
 
 private:
     void addHotspot(const Hotspot::Config &cfg);
@@ -62,6 +68,7 @@ private:
 
     AmbeDecoder m_decoder;
     AudioEngine *m_audio = nullptr;
+    QHash<quint32, QPair<QString, QString>> m_nameLookup; // callsign, name
 };
 
 #endif // HOTSPOTMANAGER_H
