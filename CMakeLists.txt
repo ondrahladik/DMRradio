@@ -7,6 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/config.json" DMRRADIO_CONFIG_JSON_SHA256)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/ConfigBuildInfo.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/ConfigBuildInfo.h
+    @ONLY
+)
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets Network Multimedia)
 
 # Collect OpenDMR encoder sources (OP25-based AMBE+2 encoder)
@@ -41,6 +48,7 @@ endif()
 
 target_include_directories(DMRradio PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/mbelib
     ${CMAKE_CURRENT_SOURCE_DIR}/opendmr_lib/encoder
 )

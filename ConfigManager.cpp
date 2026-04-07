@@ -1,10 +1,59 @@
 #include "ConfigManager.h"
+#include "ConfigBuildInfo.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QStandardPaths>
+#include <QSaveFile>
+
+namespace {
+
+QString configMarkerPath(const QString &configPath)
+{
+    return configPath + QStringLiteral(".version");
+}
+
+bool writeTextFile(const QString &path, const QByteArray &data)
+{
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    if (file.write(data) != data.size())
+        return false;
+    return file.commit();
+}
+
+bool installBundledConfig(const QString &path)
+{
+    QFile source(QStringLiteral(":/config.json"));
+    if (!source.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    if (file.write(source.readAll()) < 0)
+        return false;
+    if (!file.commit())
+        return false;
+
+    QFile::setPermissions(path,
+        QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
+}
+
+bool bundledConfigIsCurrent(const QString &markerPath)
+{
+    QFile marker(markerPath);
+    if (!marker.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+    return marker.readAll().trimmed() == QByteArrayLiteral(APP_BUNDLED_CONFIG_HASH);
+}
+
+} // namespace
 
 QString ConfigManager::resolveConfigPath()
 {
@@ -21,15 +70,17 @@ QString ConfigManager::resolveConfigPath()
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     const QString writablePath = QDir(dir).filePath(fileName);
+    const QString markerPath = configMarkerPath(writablePath);
+    const bool haveConfig = QFile::exists(writablePath);
 
-    if (QFile::exists(writablePath))
+    if (haveConfig && bundledConfigIsCurrent(markerPath))
         return writablePath;
 
     if (QFile::exists(QStringLiteral(":/config.json"))) {
-        QFile::copy(QStringLiteral(":/config.json"), writablePath);
-        // Resource copies are read-only; make writable so saves work
-        QFile::setPermissions(writablePath,
-            QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        if (!installBundledConfig(writablePath))
+            return QString();
+        const QByteArray hash = QByteArrayLiteral(APP_BUNDLED_CONFIG_HASH);
+        writeTextFile(markerPath, hash + '\n');
         return writablePath;
     }
 

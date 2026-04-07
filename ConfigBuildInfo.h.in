@@ -1,0 +1,3 @@
+#pragma once
+
+#define APP_BUNDLED_CONFIG_HASH "@DMRRADIO_CONFIG_JSON_SHA256@"
