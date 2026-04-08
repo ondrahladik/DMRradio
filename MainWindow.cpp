@@ -30,6 +30,9 @@
 #include <QDebug>
 #include <QThread>
 #include <QAudioDevice>
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#endif
 #include <QSlider>
 #include <QStyleOptionSlider>
 #include <QPixmap>
@@ -1650,11 +1653,6 @@ void MainWindow::loadDmrIds()
 
 void MainWindow::checkAndUpdateDmrIds()
 {
-#ifdef Q_OS_ANDROID
-    // Android has no TLS backend and the server forces HTTPS via redirect,
-    // so network download is impossible. Use the embedded resource instead.
-    return;
-#endif
     const QString path = dmrIdsWritablePath();
     const QFileInfo fi(path);
 
@@ -1671,6 +1669,31 @@ void MainWindow::checkAndUpdateDmrIds()
 
 void MainWindow::startDmrIdsDownload(const QString &url, const QString &savePath)
 {
+#ifdef Q_OS_ANDROID
+    QDir().mkpath(QFileInfo(savePath).absolutePath());
+
+    const bool ok = QJniObject::callStaticMethod<jboolean>(
+        "cz/dmrradio/DmrIdsDownloader",
+        "download",
+        "(Ljava/lang/String;Ljava/lang/String;)Z",
+        QJniObject::fromString(url).object<jstring>(),
+        QJniObject::fromString(savePath).object<jstring>());
+    if (!ok) {
+        addLog("DMRIds.dat download failed on Android.");
+        return;
+    }
+
+    m_dmrLookup = loadDmrLookup(savePath);
+    addLog(QString("DMRIds.dat updated: %1 entries").arg(m_dmrLookup.size()));
+
+    if (m_manager) {
+        QHash<quint32, QPair<QString, QString>> names;
+        names.reserve(m_dmrLookup.size());
+        for (auto it = m_dmrLookup.constBegin(); it != m_dmrLookup.constEnd(); ++it)
+            names.insert(it.key(), it.value());
+        m_manager->setNameLookup(names);
+    }
+#else
     auto *nam = new QNetworkAccessManager(this);
     QNetworkRequest req{QUrl(url)};
     req.setTransferTimeout(30000);
@@ -1718,6 +1741,7 @@ void MainWindow::startDmrIdsDownload(const QString &url, const QString &savePath
             m_dmrIdsDateLabel->setText(fiNew.lastModified().toString("yyyy-MM-dd"));
         }
     });
+#endif
 }
 
 void MainWindow::saveSettings()
