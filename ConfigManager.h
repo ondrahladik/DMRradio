@@ -13,7 +13,7 @@ public:
     // Returns the platform-appropriate path to config.json.
     // Priority: exe-dir (non-Android) → writable AppData → resource fallback.
     // On Android, the bundled config is copied to writable AppData and refreshed
-    // whenever the APK ships a changed config.json.
+    // after an app install/update so stale data from an older APK is not reused.
     static QString resolveConfigPath();
 
     bool load(const QString &path);

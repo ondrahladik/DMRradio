@@ -7,6 +7,10 @@
 #include <QJsonParseError>
 #include <QStandardPaths>
 #include <QSaveFile>
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
 
 namespace {
 
@@ -45,12 +49,46 @@ bool installBundledConfig(const QString &path)
     return true;
 }
 
-bool bundledConfigIsCurrent(const QString &markerPath)
+QString bundledConfigMarkerValue(qint64 installStamp)
+{
+    return QString::fromLatin1(APP_BUNDLED_CONFIG_HASH) + QLatin1Char('\n') + QString::number(installStamp);
+}
+
+#ifdef Q_OS_ANDROID
+qint64 androidInstallStamp()
+{
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    if (!activity.isValid())
+        return -1;
+
+    const QJniObject packageName = activity.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    const QJniObject packageManager = activity.callObjectMethod("getPackageManager", "()Landroid/content/pm/PackageManager;");
+    if (!packageName.isValid() || !packageManager.isValid())
+        return -1;
+
+    const QJniObject info = packageManager.callObjectMethod(
+        "getPackageInfo",
+        "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;",
+        packageName.object<jstring>(),
+        jint(0));
+    if (!info.isValid())
+        return -1;
+
+    return static_cast<qint64>(info.getField<jlong>("lastUpdateTime"));
+}
+#endif
+
+bool bundledConfigIsCurrent(const QString &markerPath, qint64 installStamp)
 {
     QFile marker(markerPath);
     if (!marker.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
-    return marker.readAll().trimmed() == QByteArrayLiteral(APP_BUNDLED_CONFIG_HASH);
+
+    const QByteArray raw = marker.readAll().trimmed();
+    const QByteArray expectedHash = QByteArray(APP_BUNDLED_CONFIG_HASH);
+    const QByteArray expectedValue = bundledConfigMarkerValue(installStamp).toUtf8();
+
+    return installStamp >= 0 ? (raw == expectedValue) : (raw == expectedHash);
 }
 
 } // namespace
@@ -72,15 +110,18 @@ QString ConfigManager::resolveConfigPath()
     const QString writablePath = QDir(dir).filePath(fileName);
     const QString markerPath = configMarkerPath(writablePath);
     const bool haveConfig = QFile::exists(writablePath);
+    const qint64 installStamp = androidInstallStamp();
 
-    if (haveConfig && bundledConfigIsCurrent(markerPath))
+    if (haveConfig && installStamp >= 0 && bundledConfigIsCurrent(markerPath, installStamp))
         return writablePath;
 
     if (QFile::exists(QStringLiteral(":/config.json"))) {
         if (!installBundledConfig(writablePath))
             return QString();
-        const QByteArray hash = QByteArrayLiteral(APP_BUNDLED_CONFIG_HASH);
-        writeTextFile(markerPath, hash + '\n');
+        if (installStamp >= 0)
+            writeTextFile(markerPath, bundledConfigMarkerValue(installStamp).toUtf8());
+        else
+            writeTextFile(markerPath, QByteArray(APP_BUNDLED_CONFIG_HASH) + '\n');
         return writablePath;
     }
 
