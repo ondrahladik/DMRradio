@@ -82,6 +82,8 @@ private slots:
 private:
     void setState(State s);
     void sendPacket(const QByteArray &data);
+    void sendVoiceBurst(const QByteArray &pcm);
+    void flushTxBuffer(bool padPartialBurst);
 
     QByteArray buildLoginPacket();
     QByteArray buildAuthPacket();

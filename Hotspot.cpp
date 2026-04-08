@@ -166,6 +166,7 @@ void Hotspot::stopTransmit()
         return;
 
     m_txTimer->stop();
+    flushTxBuffer(true);
 
     QByteArray termPayload(33, '\0');
     sendPacket(buildDmrdPacket(termPayload, false, true));
@@ -206,28 +207,18 @@ void Hotspot::onTxTimer()
     if (!m_transmitting || m_state != State::Connected)
         return;
 
-    // Need exactly 960 bytes (3×160 samples) for one DMR burst
-    static constexpr int BURST_PCM_SIZE = 960;
-
-    QByteArray burst;
-    if (m_txPcmBuffer.size() >= BURST_PCM_SIZE) {
-        QByteArray pcm = m_txPcmBuffer.left(BURST_PCM_SIZE);
-        m_txPcmBuffer.remove(0, BURST_PCM_SIZE);
-        burst = m_encoder->encodeBurst(pcm);
-
-        if (m_txFrameCount < 3)
-            qDebug() << QString("[%1] TX voice burst #%2 (buf %3 bytes)")
-                            .arg(m_config.name).arg(m_txFrameCount).arg(m_txPcmBuffer.size());
+    if (m_txPcmBuffer.size() >= 960) {
+        flushTxBuffer(false);
     } else {
         // No audio yet — send silence (limit to first 2 frames)
-        burst = m_encoder->silenceBurst();
+        QByteArray burst = m_encoder->silenceBurst();
         if (m_txFrameCount < 5)
             qDebug() << QString("[%1] TX silence #%2 (buf %3 bytes)")
                             .arg(m_config.name).arg(m_txFrameCount).arg(m_txPcmBuffer.size());
-    }
 
-    sendPacket(buildDmrdPacket(burst, false, false));
-    m_txFrameCount++;
+        sendPacket(buildDmrdPacket(burst, false, false));
+        m_txFrameCount++;
+    }
 }
 
 void Hotspot::onKeepalive()
@@ -569,6 +560,40 @@ void Hotspot::sendPacket(const QByteArray &data)
         m_lastSentTag = "unknown";
     m_lastSentSize = data.size();
     m_socket->writeDatagram(data, m_serverAddress, m_config.port);
+}
+
+void Hotspot::sendVoiceBurst(const QByteArray &pcm)
+{
+    sendPacket(buildDmrdPacket(m_encoder->encodeBurst(pcm), false, false));
+    m_txFrameCount++;
+}
+
+void Hotspot::flushTxBuffer(bool padPartialBurst)
+{
+    static constexpr int BURST_PCM_SIZE = 960;
+
+    while (m_txPcmBuffer.size() >= BURST_PCM_SIZE) {
+        const int frameNo = m_txFrameCount;
+        const QByteArray pcm = m_txPcmBuffer.left(BURST_PCM_SIZE);
+        m_txPcmBuffer.remove(0, BURST_PCM_SIZE);
+        sendVoiceBurst(pcm);
+
+        if (frameNo < 3)
+            qDebug() << QString("[%1] TX voice burst #%2 (buf %3 bytes)")
+                            .arg(m_config.name).arg(frameNo).arg(m_txPcmBuffer.size());
+    }
+
+    if (padPartialBurst && !m_txPcmBuffer.isEmpty()) {
+        const int frameNo = m_txFrameCount;
+        QByteArray pcm = m_txPcmBuffer.left(BURST_PCM_SIZE);
+        pcm.resize(BURST_PCM_SIZE);
+        m_txPcmBuffer.clear();
+        sendVoiceBurst(pcm);
+
+        if (frameNo < 3)
+            qDebug() << QString("[%1] TX voice burst #%2 (padded final, buf %3 bytes)")
+                            .arg(m_config.name).arg(frameNo).arg(m_txPcmBuffer.size());
+    }
 }
 
 void Hotspot::onRxSilenceTimeout()
