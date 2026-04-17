@@ -75,7 +75,9 @@ bool HotspotManager::loadFromConfig(ConfigManager *cfg)
             }
         }
         hcfg.options   = cfg->hotspotOptions(i);
-        hcfg.talkgroup = parseTalkgroupFromOptions(hcfg.options);
+        hcfg.talkgroup = cfg->hotspotTxTg(i);
+        if (hcfg.talkgroup <= 0)
+            hcfg.talkgroup = parseTalkgroupFromOptions(hcfg.options);
         hcfg.dmrId     = cfg->hotspotDmrId(i);  // base*100 + suffix
         hcfg.callsign  = callsign;
         hcfg.srcDmrId  = srcDmrId;

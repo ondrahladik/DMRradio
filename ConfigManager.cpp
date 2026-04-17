@@ -307,8 +307,10 @@ int ConfigManager::hotspotCount() const { return hotspotsArray().size(); }
 
 QString ConfigManager::hotspotName(int i) const
 {
-    QJsonArray arr = hotspotsArray();
-    return (i >= 0 && i < arr.size()) ? arr[i].toObject()["name"].toString() : QString();
+    const QJsonArray arr = hotspotsArray();
+    return (i >= 0 && i < arr.size())
+        ? QStringLiteral("HS%1").arg(i + 1)
+        : QString();
 }
 
 int ConfigManager::hotspotSuffix(int i) const

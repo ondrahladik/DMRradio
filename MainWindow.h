@@ -135,7 +135,7 @@ private:
     QVector<QLineEdit *> m_settServerPasswords;
 
     struct TgRow {
-        QLineEdit *name = nullptr;
+        QSpinBox *txTg = nullptr;
         QSpinBox *suffix = nullptr;
         QLineEdit *options = nullptr;
         QCheckBox *enabled = nullptr;

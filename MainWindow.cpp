@@ -1099,12 +1099,16 @@ QWidget *MainWindow::createSettingsPage()
     auto *tgGroup = new QGroupBox("Hotspots", scrollContent);
     tgGroup->setStyleSheet(sectionStyle);
     auto *tgLayout = new QVBoxLayout(tgGroup);
-    tgLayout->setSpacing(8);
+    tgLayout->setSpacing(6);
 
     m_mainGroup = new QButtonGroup(this);
 
     for (int i = 0; i < hsCount; ++i) {
         TgRow tr;
+
+        auto *hsGroup = new QGroupBox(QString("HS%1").arg(i + 1), tgGroup);
+        auto *hsLayout = new QVBoxLayout(hsGroup);
+        hsLayout->setSpacing(4);
 
         auto *flagsRow = new QHBoxLayout();
         flagsRow->setSpacing(6);
@@ -1119,45 +1123,30 @@ QWidget *MainWindow::createSettingsPage()
         flagsRow->addWidget(tr.isMain);
         flagsRow->addStretch();
 
-        auto *nameRow = new QHBoxLayout();
-        nameRow->setSpacing(4);
+        auto *optForm = new QFormLayout();
+        optForm->setSpacing(4);
 
-        tr.name = new QLineEdit();
-        tr.name->setMinimumHeight(minH);
-        tr.name->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        tr.name->setPlaceholderText("Hotspot Name");
+        tr.txTg = new QSpinBox();
+        tr.txTg->setRange(0, 99999999);
+        tr.txTg->setMinimumHeight(minH);
+        tr.txTg->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        optForm->addRow("TX TG:", tr.txTg);
 
         tr.suffix = new QSpinBox();
         tr.suffix->setRange(1, 99);
         tr.suffix->setMinimumHeight(minH);
-        tr.suffix->setMinimumWidth(48);
-        tr.suffix->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        tr.suffix->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        optForm->addRow("Suffix:", tr.suffix);
 
-        nameRow->addWidget(tr.name, 1);
-        nameRow->addWidget(tr.suffix, 0);
-
-        auto *optForm = new QFormLayout();
-        optForm->setSpacing(4);
         tr.options = new QLineEdit();
         tr.options->setMinimumHeight(minH);
         tr.options->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         tr.options->setPlaceholderText("DMR+ Options");
-        optForm->addRow(tr.options);
+        optForm->addRow("Options:", tr.options);
 
-        auto *hsBox = new QVBoxLayout();
-        hsBox->setSpacing(4);
-        hsBox->addLayout(flagsRow);
-        hsBox->addLayout(nameRow);
-        hsBox->addLayout(optForm);
-
-        tgLayout->addLayout(hsBox);
-
-        if (i < hsCount - 1) {
-            auto *sep = new QFrame();
-            sep->setFrameShape(QFrame::HLine);
-            sep->setFrameShadow(QFrame::Sunken);
-            tgLayout->addWidget(sep);
-        }
+        hsLayout->addLayout(flagsRow);
+        hsLayout->addLayout(optForm);
+        tgLayout->addWidget(hsGroup);
 
         m_settTgRows.append(tr);
     }
@@ -1713,7 +1702,7 @@ void MainWindow::loadSettingsToUi()
     }
 
     for (int i = 0; i < m_settTgRows.size() && i < m_configMgr->hotspotCount(); ++i) {
-        m_settTgRows[i].name->setText(m_configMgr->hotspotName(i));
+        m_settTgRows[i].txTg->setValue(m_configMgr->hotspotTxTg(i));
         m_settTgRows[i].suffix->setValue(m_configMgr->hotspotSuffix(i));
         m_settTgRows[i].options->setText(m_configMgr->hotspotOptions(i));
         m_settTgRows[i].enabled->setChecked(m_configMgr->hotspotEnabled(i));
@@ -1911,19 +1900,12 @@ void MainWindow::saveSettings()
     }
 
     for (int i = 0; i < m_settTgRows.size() && i < m_configMgr->hotspotCount(); ++i) {
-        m_configMgr->setHotspotName(i, m_settTgRows[i].name->text());
         m_configMgr->setHotspotSuffix(i, m_settTgRows[i].suffix->value());
         m_configMgr->setHotspotOptions(i, m_settTgRows[i].options->text());
         m_configMgr->setHotspotEnabled(i, m_settTgRows[i].enabled->isChecked());
         m_configMgr->setHotspotIsMain(i, m_settTgRows[i].isMain->isChecked());
         m_configMgr->setHotspotRxEnabled(i, m_settTgRows[i].rxEnabled->isChecked());
-    }
-
-    // Also save runtime TX TG values from the Hotspots page
-    for (int i = 0; i < m_rows.size(); ++i) {
-        int cfgIdx = m_rows[i].configIndex;
-        if (cfgIdx >= 0 && m_rows[i].txTgSpin)
-            m_configMgr->setHotspotTxTg(cfgIdx, m_rows[i].txTgSpin->value());
+        m_configMgr->setHotspotTxTg(i, m_settTgRows[i].txTg->value());
     }
 
     bool saved = m_configMgr->save();
