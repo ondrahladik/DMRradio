@@ -30,6 +30,7 @@
 #include <QDebug>
 #include <QThread>
 #include <QAudioDevice>
+#include <QSignalBlocker>
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
 #endif
@@ -120,6 +121,26 @@ QHash<quint32, QPair<QString, QString>> loadDmrLookup(const QString &filePath)
     }
 
     return lookup;
+}
+
+QString serverModeButtonStyle(bool active)
+{
+    return QString(
+        "QPushButton {"
+        "  background-color: %1;"
+        "  color: %2;"
+        "  font-weight: bold;"
+        "  border: 1px solid %3;"
+        "  border-radius: 4px;"
+        "  padding: 4px 10px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: %4;"
+        "}")
+        .arg(active ? QStringLiteral("#2e7d32") : QStringLiteral("#2d2d2d"))
+        .arg(active ? QStringLiteral("#ffffff") : QStringLiteral("#d4d4d4"))
+        .arg(active ? QStringLiteral("#47a44b") : QStringLiteral("#3d3d3d"))
+        .arg(active ? QStringLiteral("#388e3c") : QStringLiteral("#3a3a3a"));
 }
 
 } // namespace
@@ -822,7 +843,7 @@ QWidget *MainWindow::createAboutPage()
     aboutLayout->addWidget(title, 0, 0, 1, 2);
 
     const QString versionText = QCoreApplication::applicationVersion().isEmpty()
-        ? QStringLiteral("1.0.7")
+        ? QStringLiteral("1.0.8")
         : QCoreApplication::applicationVersion();
 
     auto addRow = [aboutLayout](int row, const QString &labelText, QLabel *valueLabel) {
@@ -929,11 +950,29 @@ QWidget *MainWindow::createSettingsPage()
         "}";
 
     const int minH = 28;
+    const int hsCount = m_configMgr ? m_configMgr->hotspotCount() : 0;
 
     auto *serverGroup = new QGroupBox("Server", scrollContent);
     serverGroup->setStyleSheet(sectionStyle);
     auto *serverForm = new QFormLayout(serverGroup);
     serverForm->setSpacing(6);
+
+    auto *modeRow = new QWidget(serverGroup);
+    auto *modeLayout = new QHBoxLayout(modeRow);
+    modeLayout->setContentsMargins(0, 0, 0, 0);
+    modeLayout->setSpacing(0);
+
+    m_serverModeSingleBtn = new QPushButton("Single", modeRow);
+    m_serverModeMultipleBtn = new QPushButton("Multiple", modeRow);
+    for (QPushButton *btn : {m_serverModeSingleBtn, m_serverModeMultipleBtn}) {
+        btn->setCheckable(true);
+        btn->setMinimumHeight(minH);
+        btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        modeLayout->addWidget(btn);
+    }
+    modeLayout->setStretch(0, 1);
+    modeLayout->setStretch(1, 1);
+    serverForm->addRow("Mode:", modeRow);
 
     m_settHost = new QLineEdit();
     m_settHost->setMinimumHeight(minH);
@@ -946,9 +985,64 @@ QWidget *MainWindow::createSettingsPage()
     m_settPassword->setMinimumHeight(minH);
     m_settPassword->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
-    serverForm->addRow("Host:", m_settHost);
-    serverForm->addRow("Port:", m_settPort);
-    serverForm->addRow("Password:", m_settPassword);
+    m_singleServerFields = new QWidget(serverGroup);
+    auto *singleServerForm = new QFormLayout(m_singleServerFields);
+    singleServerForm->setContentsMargins(0, 0, 0, 0);
+    singleServerForm->setSpacing(6);
+    singleServerForm->addRow("Host:", m_settHost);
+    singleServerForm->addRow("Port:", m_settPort);
+    singleServerForm->addRow("Pass:", m_settPassword);
+    serverForm->addRow(m_singleServerFields);
+
+    m_multiServerFields = new QWidget(serverGroup);
+    auto *multiServerLayout = new QVBoxLayout(m_multiServerFields);
+    multiServerLayout->setContentsMargins(0, 0, 0, 0);
+    multiServerLayout->setSpacing(6);
+    m_settServerHosts.clear();
+    m_settServerPorts.clear();
+    m_settServerPasswords.clear();
+    for (int i = 0; i < hsCount; ++i) {
+        auto *hsGroup = new QGroupBox(QString("HS%1").arg(i + 1), m_multiServerFields);
+        auto *hsForm = new QFormLayout(hsGroup);
+        hsForm->setSpacing(4);
+
+        auto *hostEdit = new QLineEdit(hsGroup);
+        hostEdit->setMinimumHeight(minH);
+        hostEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        hostEdit->setPlaceholderText("Server Host");
+        hsForm->addRow("Host:", hostEdit);
+
+        auto *portSpin = new QSpinBox(hsGroup);
+        portSpin->setRange(0, 65535);
+        portSpin->setMinimumHeight(minH);
+        portSpin->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        portSpin->setSpecialValueText("");
+        hsForm->addRow("Port:", portSpin);
+
+        auto *passEdit = new QLineEdit(hsGroup);
+        passEdit->setEchoMode(QLineEdit::Password);
+        passEdit->setMinimumHeight(minH);
+        passEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        hsForm->addRow("Pass:", passEdit);
+
+        m_settServerHosts.append(hostEdit);
+        m_settServerPorts.append(portSpin);
+        m_settServerPasswords.append(passEdit);
+        multiServerLayout->addWidget(hsGroup);
+    }
+    serverForm->addRow(m_multiServerFields);
+
+    connect(m_serverModeSingleBtn, &QPushButton::clicked, this, [this]() {
+        m_serverModeSingleBtn->setChecked(true);
+        m_serverModeMultipleBtn->setChecked(false);
+        updateServerModeUi();
+    });
+    connect(m_serverModeMultipleBtn, &QPushButton::clicked, this, [this]() {
+        m_serverModeSingleBtn->setChecked(false);
+        m_serverModeMultipleBtn->setChecked(true);
+        updateServerModeUi();
+    });
+
     layout->addWidget(serverGroup);
 
     auto *stationGroup = new QGroupBox("Station", scrollContent);
@@ -1009,7 +1103,6 @@ QWidget *MainWindow::createSettingsPage()
 
     m_mainGroup = new QButtonGroup(this);
 
-    int hsCount = m_configMgr ? m_configMgr->hotspotCount() : 0;
     for (int i = 0; i < hsCount; ++i) {
         TgRow tr;
 
@@ -1583,11 +1676,25 @@ void MainWindow::loadSettingsToUi()
     if (!m_configMgr)
         return;
 
+    {
+        const QSignalBlocker singleBlocker(m_serverModeSingleBtn);
+        const QSignalBlocker multipleBlocker(m_serverModeMultipleBtn);
+        const bool multipleMode = m_configMgr->isMultipleServerMode();
+        m_serverModeSingleBtn->setChecked(!multipleMode);
+        m_serverModeMultipleBtn->setChecked(multipleMode);
+    }
+    updateServerModeUi();
+
     m_settHost->setText(m_configMgr->host());
     m_settPort->setValue(m_configMgr->port());
     m_settPassword->setText(m_configMgr->password());
     m_settCallsign->setText(m_configMgr->callsign());
     m_settDmrId->setText(QString::number(m_configMgr->dmrId()));
+    for (int i = 0; i < m_settServerHosts.size(); ++i) {
+        m_settServerHosts[i]->setText(m_configMgr->hotspotServerHost(i));
+        m_settServerPorts[i]->setValue(m_configMgr->hotspotServerPort(i));
+        m_settServerPasswords[i]->setText(m_configMgr->hotspotServerPassword(i));
+    }
 
     QString savedDev = m_configMgr->inputDevice();
     if (savedDev.isEmpty()) {
@@ -1613,6 +1720,27 @@ void MainWindow::loadSettingsToUi()
         m_settTgRows[i].isMain->setChecked(m_configMgr->hotspotIsMain(i));
         m_settTgRows[i].rxEnabled->setChecked(m_configMgr->hotspotRxEnabled(i));
     }
+}
+
+QString MainWindow::currentServerModeUi() const
+{
+    return (m_serverModeMultipleBtn && m_serverModeMultipleBtn->isChecked())
+        ? QStringLiteral("multiple")
+        : QStringLiteral("single");
+}
+
+void MainWindow::updateServerModeUi()
+{
+    const bool multipleMode = currentServerModeUi() == QStringLiteral("multiple");
+
+    if (m_serverModeSingleBtn)
+        m_serverModeSingleBtn->setStyleSheet(serverModeButtonStyle(!multipleMode));
+    if (m_serverModeMultipleBtn)
+        m_serverModeMultipleBtn->setStyleSheet(serverModeButtonStyle(multipleMode));
+    if (m_singleServerFields)
+        m_singleServerFields->setVisible(!multipleMode);
+    if (m_multiServerFields)
+        m_multiServerFields->setVisible(multipleMode);
 }
 
 QString MainWindow::dmrIdsWritablePath()
@@ -1749,6 +1877,7 @@ void MainWindow::saveSettings()
     if (!m_configMgr)
         return;
 
+    m_configMgr->setServerMode(currentServerModeUi());
     m_configMgr->setHost(m_settHost->text());
     m_configMgr->setPort(static_cast<quint16>(m_settPort->value()));
     m_configMgr->setPassword(m_settPassword->text());
@@ -1763,6 +1892,13 @@ void MainWindow::saveSettings()
 
     QString outDevText = m_settOutputDevice->currentText();
     m_configMgr->setOutputDevice(outDevText == "(Default)" ? QString() : outDevText);
+
+    for (int i = 0; i < m_settServerHosts.size(); ++i)
+        m_configMgr->setHotspotServerHost(i, m_settServerHosts[i]->text().trimmed());
+    for (int i = 0; i < m_settServerPorts.size(); ++i)
+        m_configMgr->setHotspotServerPort(i, static_cast<quint16>(m_settServerPorts[i]->value()));
+    for (int i = 0; i < m_settServerPasswords.size(); ++i)
+        m_configMgr->setHotspotServerPassword(i, m_settServerPasswords[i]->text());
 
     QHash<int, bool> reconnectStates;
     if (m_manager) {

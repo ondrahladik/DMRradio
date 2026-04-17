@@ -14,6 +14,14 @@
 
 namespace {
 
+QString normalizedServerMode(const QJsonValue &value)
+{
+    const QString mode = value.toString().trimmed().toLower();
+    return mode == QStringLiteral("multiple")
+        ? QStringLiteral("multiple")
+        : QStringLiteral("single");
+}
+
 QString configMarkerPath(const QString &configPath)
 {
     return configPath + QStringLiteral(".version");
@@ -154,6 +162,8 @@ bool ConfigManager::load(const QString &path)
         m_root.remove("volume");
     }
 
+    ensureServerConfig();
+
     return true;
 }
 
@@ -165,10 +175,69 @@ static QByteArray encodeScalar(const QJsonValue &v)
     return bytes.mid(1, bytes.size() - 2); // strip surrounding [ and ]
 }
 
+QStringList orderedKeysForObject(const QJsonObject &obj)
+{
+    QStringList ordered;
+    const QStringList preferred = {"host", "pass", "port", "password"};
+
+    for (const QString &key : preferred) {
+        if (obj.contains(key))
+            ordered.append(key);
+    }
+
+    for (const QString &key : obj.keys()) {
+        if (!ordered.contains(key))
+            ordered.append(key);
+    }
+
+    return ordered;
+}
+
+QByteArray encodeValueIndented(const QJsonValue &value, int indentLevel)
+{
+    const QByteArray indent(indentLevel * 4, ' ');
+    const QByteArray childIndent((indentLevel + 1) * 4, ' ');
+
+    if (value.isObject()) {
+        const QJsonObject obj = value.toObject();
+        const QStringList keys = orderedKeysForObject(obj);
+
+        QByteArray out = "{\n";
+        for (int i = 0; i < keys.size(); ++i) {
+            const QString &key = keys[i];
+            out += childIndent;
+            out += "\"" + key.toUtf8() + "\": ";
+            out += encodeValueIndented(obj.value(key), indentLevel + 1);
+            if (i + 1 < keys.size())
+                out += ",";
+            out += "\n";
+        }
+        out += indent + "}";
+        return out;
+    }
+
+    if (value.isArray()) {
+        const QJsonArray array = value.toArray();
+        QByteArray out = "[\n";
+        for (int i = 0; i < array.size(); ++i) {
+            out += childIndent;
+            out += encodeValueIndented(array.at(i), indentLevel + 1);
+            if (i + 1 < array.size())
+                out += ",";
+            out += "\n";
+        }
+        out += indent + "]";
+        return out;
+    }
+
+    return encodeScalar(value);
+}
+
 bool ConfigManager::save(const QString &path)
 {
     const QStringList topOrder = {
         "callsign", "dmrId", "host", "port", "password",
+        "server_mode", "servers",
         "input_device", "output_device", "mic", "vol", "hotspots"
     };
 
@@ -187,22 +256,7 @@ bool ConfigManager::save(const QString &path)
         const bool isLast = (i == writeKeys.size() - 1);
 
         out += "    \"" + key.toUtf8() + "\": ";
-
-        if (val.isArray()) {
-            // Serialize the array with Qt indentation, then re-indent by 4 extra spaces
-            QByteArray arrBytes = QJsonDocument(val.toArray()).toJson(QJsonDocument::Indented);
-            QList<QByteArray> lines = arrBytes.split('\n');
-            while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
-                lines.removeLast();
-            for (int j = 1; j < lines.size(); ++j)
-                if (!lines[j].isEmpty())
-                    lines[j] = "    " + lines[j];
-            out += lines.join('\n');
-        } else if (val.isObject()) {
-            out += QJsonDocument(val.toObject()).toJson(QJsonDocument::Compact);
-        } else {
-            out += encodeScalar(val);
-        }
+        out += encodeValueIndented(val, 1);
 
         if (!isLast) out += ',';
         out += '\n';
@@ -226,6 +280,8 @@ bool ConfigManager::save()
 QString ConfigManager::host() const      { return m_root["host"].toString("127.0.0.1"); }
 quint16 ConfigManager::port() const      { return static_cast<quint16>(m_root["port"].toInt(62031)); }
 QString ConfigManager::password() const  { return m_root["password"].toString(); }
+QString ConfigManager::serverMode() const { return normalizedServerMode(m_root["server_mode"]); }
+bool ConfigManager::isMultipleServerMode() const { return serverMode() == QStringLiteral("multiple"); }
 QString ConfigManager::callsign() const  { return m_root["callsign"].toString(); }
 quint32 ConfigManager::dmrId() const     { return static_cast<quint32>(m_root["dmrId"].toDouble(0)); }
 QString ConfigManager::inputDevice() const { return m_root["input_device"].toString(); }
@@ -236,6 +292,7 @@ int ConfigManager::volume() const  { return m_root.contains("vol") ? m_root["vol
 void ConfigManager::setHost(const QString &v)     { m_root["host"] = v; }
 void ConfigManager::setPort(quint16 v)            { m_root["port"] = static_cast<int>(v); }
 void ConfigManager::setPassword(const QString &v) { m_root["password"] = v; }
+void ConfigManager::setServerMode(const QString &v) { m_root["server_mode"] = normalizedServerMode(v); }
 void ConfigManager::setCallsign(const QString &v) { m_root["callsign"] = v; }
 void ConfigManager::setDmrId(quint32 v)           { m_root["dmrId"] = static_cast<double>(v); }
 void ConfigManager::setInputDevice(const QString &v) { m_root["input_device"] = v; }
@@ -293,6 +350,42 @@ int ConfigManager::hotspotTxTg(int i) const
 {
     QJsonArray arr = hotspotsArray();
     return (i >= 0 && i < arr.size()) ? arr[i].toObject()["tx_tg"].toInt(0) : 0;
+}
+
+QString ConfigManager::hotspotServerHost(int i) const
+{
+    const QJsonObject servers = m_root["servers"].toObject();
+    const QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    return server["host"].toString();
+}
+
+quint16 ConfigManager::hotspotServerPort(int i) const
+{
+    const QJsonObject servers = m_root["servers"].toObject();
+    const QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    const QJsonValue value = server["port"];
+
+    bool ok = false;
+    int port = 0;
+    if (value.isString())
+        port = value.toString().toInt(&ok);
+    else if (value.isDouble()) {
+        port = value.toInt();
+        ok = true;
+    }
+
+    return ok && port > 0 && port <= 65535
+        ? static_cast<quint16>(port)
+        : 0;
+}
+
+QString ConfigManager::hotspotServerPassword(int i) const
+{
+    const QJsonObject servers = m_root["servers"].toObject();
+    const QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    if (server.contains("pass"))
+        return server["pass"].toString();
+    return server["password"].toString();
 }
 
 void ConfigManager::setHotspotName(int i, const QString &v)
@@ -372,4 +465,83 @@ void ConfigManager::setHotspotTxTg(int i, int v)
     obj["tx_tg"] = v;
     arr[i] = obj;
     setHotspotsArray(arr);
+}
+
+void ConfigManager::setHotspotServerHost(int i, const QString &v)
+{
+    if (i < 0)
+        return;
+
+    ensureServerConfig();
+
+    QJsonObject servers = m_root["servers"].toObject();
+    QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    server["host"] = v;
+    servers[hotspotServerKey(i)] = server;
+    m_root["servers"] = servers;
+}
+
+void ConfigManager::setHotspotServerPort(int i, quint16 v)
+{
+    if (i < 0)
+        return;
+
+    ensureServerConfig();
+
+    QJsonObject servers = m_root["servers"].toObject();
+    QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    server["port"] = v == 0 ? QJsonValue(QString()) : QJsonValue(QString::number(v));
+    servers[hotspotServerKey(i)] = server;
+    m_root["servers"] = servers;
+}
+
+void ConfigManager::setHotspotServerPassword(int i, const QString &v)
+{
+    if (i < 0)
+        return;
+
+    ensureServerConfig();
+
+    QJsonObject servers = m_root["servers"].toObject();
+    QJsonObject server = servers[hotspotServerKey(i)].toObject();
+    server["pass"] = v;
+    server.remove("password");
+    servers[hotspotServerKey(i)] = server;
+    m_root["servers"] = servers;
+}
+
+QString ConfigManager::hotspotServerKey(int i)
+{
+    return QStringLiteral("hs%1").arg(i + 1);
+}
+
+void ConfigManager::ensureServerConfig()
+{
+    m_root["server_mode"] = normalizedServerMode(m_root["server_mode"]);
+
+    QJsonObject servers = m_root["servers"].toObject();
+    const QString globalHost = host();
+    const QString globalPort = QString::number(port());
+    const QString globalPass = password();
+    const int minServerCount = qMax(4, hotspotCount());
+
+    for (int i = 0; i < minServerCount; ++i) {
+        const QString key = hotspotServerKey(i);
+        QJsonObject server = servers[key].toObject();
+        if (!server.contains("host")) {
+            server["host"] = (i == 0) ? globalHost : QString();
+        }
+        if (!server.contains("port")) {
+            server["port"] = (i == 0) ? globalPort : QString();
+        }
+        if (!server.contains("pass") && !server.contains("password")) {
+            server["pass"] = (i == 0) ? globalPass : QString();
+        } else if (server.contains("password") && !server.contains("pass")) {
+            server["pass"] = server["password"];
+            server.remove("password");
+        }
+        servers[key] = server;
+    }
+
+    m_root["servers"] = servers;
 }

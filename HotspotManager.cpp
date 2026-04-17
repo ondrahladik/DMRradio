@@ -48,6 +48,7 @@ bool HotspotManager::loadFromConfig(ConfigManager *cfg)
     QString password = cfg->password();
     QString callsign = cfg->callsign();
     quint32 srcDmrId = cfg->dmrId();
+    const bool multipleServerMode = cfg->isMultipleServerMode();
 
     int total = cfg->hotspotCount();
     if (total == 0) {
@@ -63,11 +64,20 @@ bool HotspotManager::loadFromConfig(ConfigManager *cfg)
         hcfg.name      = cfg->hotspotName(i);
         hcfg.host      = host;
         hcfg.port      = port;
+        hcfg.password  = password;
+        if (multipleServerMode) {
+            hcfg.host = cfg->hotspotServerHost(i).trimmed();
+            hcfg.port = cfg->hotspotServerPort(i);
+            hcfg.password = cfg->hotspotServerPassword(i);
+            if (hcfg.host.isEmpty() || hcfg.port == 0) {
+                emit logMessage(QString("[%1] Dedicated server is incomplete in Multiple mode; connect will stay disabled until Host and Port are set")
+                                    .arg(hcfg.name));
+            }
+        }
         hcfg.options   = cfg->hotspotOptions(i);
         hcfg.talkgroup = parseTalkgroupFromOptions(hcfg.options);
         hcfg.dmrId     = cfg->hotspotDmrId(i);  // base*100 + suffix
         hcfg.callsign  = callsign;
-        hcfg.password  = password;
         hcfg.srcDmrId  = srcDmrId;
         hcfg.configIndex = i;
 

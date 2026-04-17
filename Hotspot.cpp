@@ -77,6 +77,12 @@ void Hotspot::connectToServer()
     if (m_state != State::Disconnected)
         return;
 
+    if (m_config.host.trimmed().isEmpty() || m_config.port == 0) {
+        emit logMessage(QString("[%1] Server is not configured (Host/Port)")
+                            .arg(m_config.name));
+        return;
+    }
+
     m_socket->blockSignals(false);
 
     QHostInfo info = QHostInfo::fromName(m_config.host);

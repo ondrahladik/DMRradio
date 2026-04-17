@@ -23,6 +23,7 @@ class HotspotManager;
 class AudioEngine;
 class Hotspot;
 class ConfigManager;
+class QWidget;
 
 struct HotspotRow {
     int configIndex = -1;
@@ -75,6 +76,8 @@ private:
     void wireHotspotConnections();
     void rebuildHotspotsPage();
     void loadSettingsToUi();
+    void updateServerModeUi();
+    QString currentServerModeUi() const;
     void loadDmrIds();
     void checkAndUpdateDmrIds();
     void startDmrIdsDownload(const QString &url, const QString &savePath);
@@ -116,6 +119,10 @@ private:
     QPushButton *m_navAbout = nullptr;
 
     // Settings page fields
+    QPushButton *m_serverModeSingleBtn = nullptr;
+    QPushButton *m_serverModeMultipleBtn = nullptr;
+    QWidget *m_singleServerFields = nullptr;
+    QWidget *m_multiServerFields = nullptr;
     QLineEdit *m_settHost = nullptr;
     QSpinBox *m_settPort = nullptr;
     QLineEdit *m_settCallsign = nullptr;
@@ -123,6 +130,9 @@ private:
     QLineEdit *m_settDmrId = nullptr;
     QComboBox *m_settInputDevice = nullptr;
     QComboBox *m_settOutputDevice = nullptr;
+    QVector<QLineEdit *> m_settServerHosts;
+    QVector<QSpinBox *> m_settServerPorts;
+    QVector<QLineEdit *> m_settServerPasswords;
 
     struct TgRow {
         QLineEdit *name = nullptr;
